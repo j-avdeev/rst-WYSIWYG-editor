@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+dist/
+*.egg-info/
+
+# Node (Phase 1+)
+node_modules/
+frontend/dist/
+
+# Reports & local artifacts
+roundtrip-report.json
+.env

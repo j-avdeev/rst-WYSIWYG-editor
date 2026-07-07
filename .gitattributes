@@ -1,0 +1,7 @@
+# Default: normalize to LF in repo and working tree.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+
+# Fixture corpus must stay byte-exact (deliberate CRLF / mixed-EOL coverage):
+# never let git normalize or convert line endings there. Last rule wins.
+backend/tests/fixtures/** -text
