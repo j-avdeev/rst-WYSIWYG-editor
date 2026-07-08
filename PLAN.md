@@ -15,7 +15,7 @@
 | 2 — Editing core | ✅ done | `29be4e3` | Dirty-node serialize + verify-reparse; `rstkit strict` 100.00% (10,884/10,884 blocks). AC verified on real corpus: one-line edit → exactly one git hunk |
 | 3 — csv-table editing | ✅ done | `7e3ed3f`, `397594b` | csv-table parser/rendering, dirty-cell serializer with clean-cell raw preservation, row/column toolbar, options popover, Hypothesis fuzz coverage (found & fixed 5 serializer bug classes: standalone-hyperlink recognition, dialect self-disagreement, backtick-edged literals, bare/roman list markers, whitespace-in-markup). Strict 100.00% (13,764/13,764; 2,879/2,946 csv-tables editable, rest opaque-fallback) |
 | 4 — figure/image + math | mostly done (out of order) | `7e3ed3f` | Pulled forward ahead of the original plan order per user priority: image insert (paste/drop/toolbar/upload endpoint, media/ convention, collision-safe naming, thumbnail preview, "Replace image..."), inline+block LaTeX math editor (KaTeX live preview, curated symbol toolbar). Not yet done: figure caption as rich editable text (still raw-text-in-modal) and options popover |
-| 5 — Git UI + file management | not started | | |
+| 5 — Git UI + file management | ✅ done | `6cb197d` | Git tab (status/diff/commit/discard, per-file selection), New-page dialog with byte-safe toctree registration, rename via git mv with corpus-wide toctree reference updates. AC loop (create→toctree→edit→diff→commit) covered by test_full_phase5_loop |
 | 6 — Huge files | not started | | errors.rst = 463 KB, the size outlier |
 | 7 — Whitelist round-out | not started | | |
 | 8 — Import + niceties | not started | | image upload already covers the main paste-screenshot use case originally scoped here; pypandoc docx/md import still open |
