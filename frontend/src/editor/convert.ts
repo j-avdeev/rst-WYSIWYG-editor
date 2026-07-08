@@ -98,6 +98,11 @@ function convertBlock(view: ViewNode, docPath: string): PMNode {
       if (!items.length) throw new Unsupported('empty list')
       return { type: listType, content: items }
     }
+    case 'block_group': {
+      const content = (view.children ?? []).map((c) => convertBlock(c, docPath))
+      if (!content.length) throw new Unsupported('empty block_group')
+      return { type: 'block_group', content }
+    }
     default:
       throw new Unsupported(`block: ${view.type}`)
   }
@@ -110,6 +115,7 @@ function opaqueFallback(node: EdNode): PMNode {
       raw: node.raw_source,
       kind: String(node.attrs.name ?? node.type),
       label: node.type === 'directive' ? `.. ${node.attrs.name ?? ''}::` : node.type,
+      srcId: node.id,
     },
   }
 }
@@ -128,6 +134,10 @@ function validated(candidate: PMNode, node: EdNode): PMNode {
   }
 }
 
+function withSrcId(pm: PMNode, id: string): PMNode {
+  return { ...pm, attrs: { ...(pm.attrs ?? {}), srcId: id } }
+}
+
 function convertTopLevel(node: EdNode, docPath: string): PMNode {
   if (node.type === 'heading') {
     const title = String(node.attrs.title ?? '')
@@ -141,26 +151,21 @@ function convertTopLevel(node: EdNode, docPath: string): PMNode {
       }
     }
     return validated(
-      {
-        type: 'heading',
-        attrs: { level, underline: node.attrs.underline ?? '=', overline: !!node.attrs.overline },
-        content,
-      },
+      withSrcId(
+        {
+          type: 'heading',
+          attrs: { level, underline: node.attrs.underline ?? '=', overline: !!node.attrs.overline },
+          content,
+        },
+        node.id,
+      ),
       node,
     )
   }
 
   if (node.type === 'text' && node.view) {
     try {
-      if (node.view.type === 'block_group') {
-        const content = (node.view.children ?? []).map((c) => convertBlock(c, docPath))
-        if (content.length === 1) return validated(content[0], node)
-        // multiple sibling blocks from one isolated parse: wrap in a
-        // read-only group; Phase 2 may split these back into separate
-        // top-level EdNodes instead.
-        return validated({ type: 'blockquote', content }, node)
-      }
-      return validated(convertBlock(node.view, docPath), node)
+      return validated(withSrcId(convertBlock(node.view, docPath), node.id), node)
     } catch {
       // fall through to opaque fallback below
     }

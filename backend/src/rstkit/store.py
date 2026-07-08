@@ -98,6 +98,12 @@ class LocalGitStore:
         path = self._resolve(rel_path)
         path.write_bytes(data)
 
+    def mtime_ns(self, rel_path: str) -> int:
+        return self._resolve(rel_path).stat().st_mtime_ns
+
+    def abspath(self, rel_path: str) -> Path:
+        return self._resolve(rel_path)
+
     def resolve_asset(self, doc_rel_path: str, uri: str) -> Path | None:
         """Mirror Sphinx: a leading '/' is rooted at the source dir, else
         the path is relative to the referencing document's directory."""

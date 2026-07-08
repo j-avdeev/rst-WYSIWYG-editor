@@ -50,6 +50,7 @@ export interface GetDocResponse {
   enriched: boolean
   size_bytes: number
   substitutions: Record<string, SubstitutionEntry>
+  mtime_ns: number
 }
 
 export interface ProjectInfo {

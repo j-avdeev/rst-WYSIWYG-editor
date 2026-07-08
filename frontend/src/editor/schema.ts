@@ -7,12 +7,19 @@ import { addListNodes } from 'prosemirror-schema-list'
 // opaque-block/opaque-mark escape hatch for everything else. Editing (Phase
 // 2+) reuses this same schema — Phase 1 just runs the EditorView read-only.
 
+// srcId links a top-level PM node back to the EdNode it came from; blocks
+// whose current JSON still equals their load-time JSON are sent back as the
+// original raw_source on save (byte-exact). Nested copies of these nodes just
+// carry a null srcId.
+const srcId = { default: null as string | null }
+
 const baseNodes: Record<string, NodeSpec> = {
   doc: { content: 'block+' },
 
   paragraph: {
     content: 'inline*',
     group: 'block',
+    attrs: { srcId },
     parseDOM: [{ tag: 'p' }],
     toDOM: () => ['p', 0],
   },
@@ -20,7 +27,7 @@ const baseNodes: Record<string, NodeSpec> = {
   heading: {
     content: 'inline*',
     group: 'block',
-    attrs: { level: { default: 1 }, underline: { default: '=' }, overline: { default: false } },
+    attrs: { level: { default: 1 }, underline: { default: '=' }, overline: { default: false }, srcId },
     parseDOM: [1, 2, 3, 4, 5, 6].map((level) => ({ tag: `h${level}`, attrs: { level } })),
     toDOM: (node) => [`h${Math.min(node.attrs.level, 6)}`, { 'data-underline': node.attrs.underline }, 0],
   },
@@ -28,8 +35,20 @@ const baseNodes: Record<string, NodeSpec> = {
   blockquote: {
     content: 'block+',
     group: 'block',
+    attrs: { srcId },
     parseDOM: [{ tag: 'blockquote' }],
     toDOM: () => ['blockquote', 0],
+  },
+
+  // Adjacent blocks glued by indentation in the source (e.g. "intro::" +
+  // literal block). Transparent container — NOT a quote; the backend
+  // serializer reconstructs the :: linkage.
+  block_group: {
+    content: 'block+',
+    group: 'block',
+    attrs: { srcId },
+    parseDOM: [{ tag: 'div.block-group' }],
+    toDOM: () => ['div', { class: 'block-group' }, 0],
   },
 
   literal_block: {
@@ -38,6 +57,7 @@ const baseNodes: Record<string, NodeSpec> = {
     code: true,
     whitespace: 'pre',
     marks: '',
+    attrs: { srcId },
     parseDOM: [{ tag: 'pre' }],
     toDOM: () => ['pre', ['code', 0]],
   },
@@ -50,7 +70,7 @@ const baseNodes: Record<string, NodeSpec> = {
     group: 'block',
     atom: true,
     isolating: true,
-    attrs: { raw: { default: '' }, kind: { default: '' }, label: { default: '' } },
+    attrs: { raw: { default: '' }, kind: { default: '' }, label: { default: '' }, srcId },
     parseDOM: [{ tag: 'div.opaque-block' }],
     toDOM: (node) => [
       'div',
@@ -112,7 +132,16 @@ const marks: Record<string, MarkSpec> = {
   },
 }
 
-const nodesWithLists = addListNodes(OrderedMap.from(baseNodes), 'paragraph block*', 'block')
+let nodesWithLists = addListNodes(OrderedMap.from(baseNodes), 'paragraph block*', 'block')
+
+// lists can be top-level blocks too, so they also need srcId
+for (const name of ['bullet_list', 'ordered_list'] as const) {
+  const spec = nodesWithLists.get(name)!
+  nodesWithLists = nodesWithLists.update(name, {
+    ...spec,
+    attrs: { ...(spec.attrs ?? {}), srcId },
+  })
+}
 
 export const schema = new Schema({
   nodes: nodesWithLists,

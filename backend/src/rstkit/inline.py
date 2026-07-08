@@ -17,6 +17,8 @@ never at risk here.
 
 from __future__ import annotations
 
+import re
+
 from docutils import nodes as du
 from docutils import frontend, utils
 from docutils.parsers import rst
@@ -55,23 +57,34 @@ _INLINE_MARK = {
 }
 
 
+_ESCAPED_WS = re.compile(r"\x00\s")
+
+
+def _clean(text: str) -> str:
+    """docutils marks backslash-escapes with NUL bytes in Text nodes and
+    strips them in a writer transform we never run — apply the same
+    semantics here: escaped whitespace vanishes entirely ("word\\ **b**"
+    renders as "wordb"), other escaped chars keep the char."""
+    return _ESCAPED_WS.sub("", text).replace("\x00", "")
+
+
 def _convert_inline(node: du.Node) -> dict:
     if isinstance(node, du.Text):
-        return {"type": "text", "text": str(node)}
+        return {"type": "text", "text": _clean(str(node))}
 
     if isinstance(node, du.math):
-        return {"type": "math", "text": node.astext()}
+        return {"type": "math", "text": _clean(node.astext())}
 
     if isinstance(node, du.substitution_reference):
-        return {"type": "subst_ref", "name": node.get("refname", node.astext())}
+        return {"type": "subst_ref", "name": _clean(node.get("refname", node.astext()))}
 
     if isinstance(node, du.reference):
         href = node.get("refuri") or node.get("refname") or ""
         return {
             "type": "link",
-            "href": href,
+            "href": _clean(href),
             "children": [_convert_inline(c) for c in node.children] or [
-                {"type": "text", "text": node.astext()}
+                {"type": "text", "text": _clean(node.astext())}
             ],
         }
 
@@ -80,13 +93,13 @@ def _convert_inline(node: du.Node) -> dict:
             return {
                 "type": mark,
                 "children": [_convert_inline(c) for c in node.children] or [
-                    {"type": "text", "text": node.astext()}
+                    {"type": "text", "text": _clean(node.astext())}
                 ],
             }
 
     # Unknown inline construct (footnote_reference, problematic role output,
     # etc.) — degrade to opaque text rather than dropping it.
-    return {"type": "opaque", "text": node.astext()}
+    return {"type": "opaque", "text": _clean(node.astext())}
 
 
 def _convert_inline_children(node: du.Node) -> list[dict]:
@@ -94,6 +107,11 @@ def _convert_inline_children(node: du.Node) -> list[dict]:
 
 
 def _convert_block(node: du.Node) -> dict | None:
+    """Convert one docutils block node to a view dict, or None if it (or ANY
+    of its descendants) cannot be represented. Poisoning the whole block on
+    an unconvertible child is a safety property: a view that silently drops
+    a nested directive/comment would let an edit erase that content from the
+    file. Unrepresentable => opaque card => raw source preserved."""
     if isinstance(node, du.paragraph):
         return {"type": "paragraph", "children": _convert_inline_children(node)}
 
@@ -101,8 +119,7 @@ def _convert_block(node: du.Node) -> dict | None:
         return {"type": "literal_block", "text": node.astext()}
 
     if isinstance(node, du.block_quote):
-        children = [_convert_block(c) for c in node.children]
-        children = [c for c in children if c]
+        children = _convert_all_or_none(node.children)
         return {"type": "block_quote", "children": children} if children else None
 
     if isinstance(node, (du.bullet_list, du.enumerated_list)):
@@ -110,24 +127,25 @@ def _convert_block(node: du.Node) -> dict | None:
         items = []
         for item in node.children:
             if not isinstance(item, du.list_item):
-                continue
-            item_children = [_convert_block(c) for c in item.children]
-            item_children = [c for c in item_children if c]
-            if item_children:
-                items.append({"type": "list_item", "children": item_children})
+                return None
+            item_children = _convert_all_or_none(item.children)
+            if item_children is None:
+                return None
+            items.append({"type": "list_item", "children": item_children})
         return {"type": kind, "children": items} if items else None
 
     if isinstance(node, du.definition_list):
         items = []
         for item in node.children:
             if not isinstance(item, du.definition_list_item):
-                continue
+                return None
             term = item.first_child_matching_class(du.term)
             definition = item.first_child_matching_class(du.definition)
             if term is None or definition is None:
-                continue
-            def_children = [_convert_block(c) for c in item[definition]]
-            def_children = [c for c in def_children if c]
+                return None
+            def_children = _convert_all_or_none(item[definition].children)
+            if def_children is None:
+                return None
             items.append(
                 {
                     "type": "definition_item",
@@ -138,37 +156,71 @@ def _convert_block(node: du.Node) -> dict | None:
         return {"type": "definition_list", "children": items} if items else None
 
     if isinstance(node, du.line_block):
-        lines = [
-            {"type": "line", "children": _convert_inline_children(c)}
-            for c in node.children
-            if isinstance(c, du.line)
-        ]
+        lines = []
+        for c in node.children:
+            if not isinstance(c, du.line):
+                return None
+            lines.append({"type": "line", "children": _convert_inline_children(c)})
         return {"type": "line_block", "children": lines} if lines else None
 
+    return None
+
+
+def _convert_all_or_none(children: list[du.Node]) -> list[dict] | None:
+    """All children must convert; one failure poisons the sequence."""
+    out = []
+    for child in children:
+        converted = _convert_block(child)
+        if converted is None:
+            return None
+        out.append(converted)
+    return out if out else None
+
+
+def text_to_view(text: str) -> dict | None:
+    """Parse an isolated rst fragment into a view tree (or None if it doesn't
+    map onto supported view types). Shared by enrichment and by the
+    serializer's verify-reparse loop (rstkit.verify)."""
+    if not text.strip():
+        return None
+    document = _parse_fragment(text)
+    if document is None:
+        return None
+    body = list(document.children)
+    # comments (including stubbed directives glued into this block as
+    # indented continuations) and parser messages make the fragment
+    # unrepresentable — poison, never drop (see _convert_block docstring)
+    if any(isinstance(c, (du.system_message, du.comment)) for c in body):
+        return None
+    if len(body) == 1:
+        return _convert_block(body[0])
+    if len(body) > 1:
+        children = _convert_all_or_none(body)
+        if children is None:
+            return None
+        return {"type": "block_group", "children": children}
+    return None
+
+
+def title_to_view(title: str) -> dict | None:
+    """Parse a heading's title text into a heading_title view (inline marks)."""
+    if not title.strip():
+        return None
+    document = _parse_fragment(title)
+    if document is None or not document.children:
+        return None
+    first = document.children[0]
+    if isinstance(first, du.paragraph):
+        return {"type": "heading_title", "children": _convert_inline_children(first)}
     return None
 
 
 def enrich_text_node(node: EdNode) -> None:
     """Populate node.view in place; leaves the node untouched on any failure
     or unrecognized shape (frontend falls back to plain raw_source display)."""
-    if node.type != "text" or not node.raw_source.strip():
+    if node.type != "text":
         return
-    document = _parse_fragment(node.raw_source)
-    if document is None:
-        return
-    body = [
-        c
-        for c in document.children
-        if not isinstance(c, (du.system_message, du.comment))
-    ]
-    if len(body) == 1:
-        view = _convert_block(body[0])
-    elif len(body) > 1:
-        children = [_convert_block(c) for c in body]
-        children = [c for c in children if c]
-        view = {"type": "block_group", "children": children} if children else None
-    else:
-        view = None
+    view = text_to_view(node.raw_source)
     if view is not None:
         node.view = view
 
@@ -178,15 +230,9 @@ def enrich_heading_node(node: EdNode) -> None:
     heading like ``**Bold** Title`` should still render bold)."""
     if node.type != "heading":
         return
-    title = node.attrs.get("title", "")
-    if not title.strip():
-        return
-    document = _parse_fragment(title)
-    if document is None or not document.children:
-        return
-    first = document.children[0]
-    if isinstance(first, du.paragraph):
-        node.view = {"type": "heading_title", "children": _convert_inline_children(first)}
+    view = title_to_view(node.attrs.get("title", ""))
+    if view is not None:
+        node.view = view
 
 
 def enrich_nodes(nodes: list[EdNode]) -> None:

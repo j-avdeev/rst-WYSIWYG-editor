@@ -6,9 +6,12 @@ ProseMirror frontend. Core guarantee: **files round-trip byte-identical** —
 only blocks you actually edit are re-serialized, so git diffs stay minimal.
 
 Development plan: see `.claude/plans/` (approved 2026-07). Current status:
-**Phase 1 complete** — read-only browser (file tree, doc viewer with best-effort
-rich rendering, asset/substitution resolution) on top of the Phase 0 round-trip
-engine.
+**Phase 2 complete** — the editing core. Rich blocks (headings, paragraphs,
+lists, literal blocks) are editable in ProseMirror; opaque cards edit as raw
+source in a modal. Saving re-emits untouched blocks byte-for-byte and routes
+every edited block through serialize → re-parse → canonical-compare
+(verify-reparse); a failed verification rejects the save instead of writing.
+Live server-rendered preview + source view with dirty-block highlighting.
 
 ## Layout
 
@@ -31,10 +34,12 @@ engine.
 ```powershell
 cd backend
 uv run pytest                                        # unit + fixture corpus + API tests
-uv run rstkit roundtrip C:\work\pradis-docs-git\docs # full corpus, must PASS
+uv run rstkit roundtrip C:\work\pradis-docs-git\docs # identity: 100% byte-identical
+uv run rstkit strict C:\work\pradis-docs-git\docs    # force-reserialize editable blocks
 ```
 
-Pass criterion: 100% byte-identical over all 2,093 corpus files. Re-run after
+Pass criteria: identity mode 100% byte-identical over all 2,093 corpus files;
+strict mode ≥95% (currently 100.00% over 10,884 editable blocks). Re-run after
 every change that touches `rstkit/`.
 
 ## Running it

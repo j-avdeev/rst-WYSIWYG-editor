@@ -307,10 +307,11 @@ def _register_stub_roles(text: str) -> None:
 
 
 class _SilentReporter:
-    """Minimal reporter duck-type for roles.role() lookup."""
+    """Reporter duck-type for roles.role() lookup: swallow every level
+    (info/warning/error/severe) the lookup may emit."""
 
-    def error(self, *args, **kwargs):
-        return None
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
 
 
 def directive_inventory(text: str) -> Counter:

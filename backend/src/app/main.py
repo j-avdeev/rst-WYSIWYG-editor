@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import assets, docs, files, project
+from .routers import assets, docs, files, preview, project
 
 app = FastAPI(title="rst WYSIWYG editor backend")
 
@@ -18,6 +18,7 @@ app.include_router(project.router)
 app.include_router(files.router)
 app.include_router(docs.router)
 app.include_router(assets.router)
+app.include_router(preview.router)
 
 
 @app.get("/api/health")
