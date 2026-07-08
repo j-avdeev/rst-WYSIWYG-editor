@@ -139,6 +139,7 @@ def scan_blocks(lines: list[str]) -> list[EdNode]:
             i = emit(
                 "heading", start, i + 3,
                 underline=_strip_eol(line).strip()[0], overline=True,
+                title=_strip_eol(lines[i + 1]).strip(),
             )
             continue
 
@@ -159,6 +160,7 @@ def scan_blocks(lines: list[str]) -> list[EdNode]:
             i = emit(
                 "heading", start, i + 2,
                 underline=_strip_eol(lines[i + 1]).strip()[0], overline=False,
+                title=_strip_eol(line).strip(),
             )
             continue
 

@@ -36,6 +36,11 @@ class EdNode(BaseModel):
     raw_source: str
     attrs: dict[str, Any] = Field(default_factory=dict)
     children: list["EdNode"] = Field(default_factory=list)
+    # Best-effort rendering enrichment (paragraph/list/inline-mark tree) for
+    # the frontend. Populated on-demand by inline.py, never by parse.py/
+    # serialize.py — it carries no authority over round-trip fidelity, so a
+    # bad or missing `view` can only degrade display, never corrupt a file.
+    view: dict[str, Any] | None = None
 
 
 class EdDoc(BaseModel):
