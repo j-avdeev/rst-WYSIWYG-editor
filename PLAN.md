@@ -19,6 +19,8 @@
 | 6 — Huge files | not started | | errors.rst = 463 KB, the size outlier |
 | 7 — Whitelist round-out | not started | | |
 | 8 — Import + niceties | not started | | image upload already covers the main paste-screenshot use case originally scoped here; pypandoc docx/md import still open |
+| 9 — Real Sphinx build preview | not started | | user request 2026-07-09: "view as it will be built finally", opened in a separate browser tab. See §Phase 9 below |
+| 10 — TOC management & preview | not started | | user request 2026-07-09: intuitive table-of-contents view + management. Builds on Phase 5's byte-safe toctree editing. See §Phase 10 below |
 
 **Before touching anything in `backend/src/rstkit/`, run the two quality gates and keep them green:**
 ```powershell
@@ -146,6 +148,67 @@ Not yet implemented: `/api/substitutions` as a standalone endpoint (currently in
 | **6 — Huge files** | Outline mode >150KB: sections listed collapsed, expand-to-edit as sub-document | errors.rst (463 KB) opens fast, typing stays responsive, edit -> minimal diff |
 | **7 — Whitelist round-out** | list-table, code-block/parsed-literal highlighting, admonitions, image, rst-class passthrough, include-card | Editability coverage >90% of corpus bytes; strict >=95% per new type |
 | **8 — Import + niceties** | pypandoc docx/md import, paste-screenshot -> figure, polish | Representative .docx converts and saves round-trip-clean |
+
+## Phase 9 — Real Sphinx build preview ("as it will be built finally")
+
+The in-editor preview (docutils html5 with stubs) is a fast approximation;
+Sphinx-only features (toctree nav, cross-refs, theme, search) only exist in a
+real build. This phase adds a one-click full build opened in a separate
+browser tab — replacing the user's current manual `sphinx-build` +
+`python -m http.server` workflow.
+
+- **Backend**: add `sphinx==8.2.3`, `sphinx-rtd-theme`, `sphinxcontrib-jquery`
+  to backend deps (pin to the PRADIS build env; the project's custom `_ext/`
+  extensions load from the repo itself). New endpoints:
+  - `POST /api/build` — spawn `sphinx-build -b html <srcdir> <outdir>` in a
+    background thread; incremental (Sphinx's own doctree cache makes rebuilds
+    after the first one fast). One build at a time (lock; 409 if running).
+    Build into the project's conventional `build/html` so it stays compatible
+    with the user's existing serving setup.
+  - `GET /api/build/status` — running/succeeded/failed + tail of the build log
+    (warnings surface here — useful signal after edits).
+  - Mount the output dir read-only at `/built/` (FastAPI StaticFiles).
+- **Frontend**: "⚡ Build & view" button in the doc bar. Flow: save if dirty →
+  trigger build → poll status (spinner + log on failure) → `window.open` the
+  built page for the current doc (`/built/<docname>.html`) in a new tab.
+  Subsequent clicks with a warm cache should be seconds.
+- **AC**: from a freshly edited page, one click yields the fully themed,
+  navigable HTML for that page in a new tab; build warnings are visible in
+  the editor; a second build after a one-file edit completes incrementally.
+
+## Phase 10 — TOC management & intuitive preview
+
+Today toctrees are edited as raw directive cards, registered on page-create
+(Phase 5), and invisible in the in-editor preview (stubbed out). This phase
+makes the document hierarchy a first-class, visual object.
+
+- **Backend**: `GET /api/toc` — walk toctrees recursively from `master_doc`,
+  resolving every entry to `{docname, title, children}` where `title` is the
+  page's real first heading (already captured by the parser as heading attrs).
+  Include per-entry provenance (which file + which toctree block it comes
+  from) and an `orphans` list: .rst files reachable on disk but absent from
+  every toctree (a real hazard — Sphinx silently warns and the page becomes
+  unreachable). `POST /api/toc/move` — reorder/insert/remove an entry, reusing
+  Phase 5's byte-safe rewrite (only the affected toctree block's raw_source
+  changes, entry lines are permuted/edited in place, everything else verbatim).
+- **Frontend**:
+  - Sidebar gets a second mode toggle: **Files | Contents**. Contents shows
+    the tree as readers will see it — nested, in navigation order, with real
+    page titles instead of filenames; click opens the page; the current page
+    is highlighted in its hierarchy context. Orphan pages appear in a
+    separate "not in navigation" group with a one-click "add to toctree…"
+    action.
+  - Reordering: up/down controls (or drag) on Contents entries, writing
+    through `POST /api/toc/move`; git diff shows a minimal line permutation
+    in one toctree block.
+  - **In-editor preview**: replace the invisible toctree stub with a rendered
+    nav box — nested list of resolved titles matching the Contents view, so a
+    toctree block in the preview pane finally looks like what it produces.
+- **AC**: the Contents view of the real corpus matches the sidebar of the
+  built HTML (spot-check against Phase 9's output); moving an entry up/down
+  produces a git diff confined to reordered lines inside one toctree block;
+  an orphaned page is flagged and can be attached to a toctree without
+  touching raw rst.
 
 ## Round-trip harness (permanent CI gate)
 ```
