@@ -1,4 +1,4 @@
-# Starts the backend (FastAPI/uvicorn) and frontend (Vite) dev servers.
+﻿# Starts the backend (FastAPI/uvicorn) and frontend (Vite) dev servers.
 # Usage: powershell -File scripts\dev.ps1 [-Root <sphinx-source-dir>]
 param(
     [string]$Root = "C:\work\pradis-docs-git\docs\pradis-sphinx-doc"
@@ -16,12 +16,16 @@ $backend = Start-Process -FilePath "uv" `
 
 $frontendDir = Join-Path $repoRoot "frontend"
 if (Test-Path (Join-Path $frontendDir "package.json")) {
-    $frontend = Start-Process -FilePath "pnpm" `
+    # pnpm's extensionless global shim isn't a valid Win32 executable;
+    # Start-Process needs the .cmd wrapper explicitly on Windows.
+    $pnpmCmd = (Get-Command "pnpm.cmd" -ErrorAction SilentlyContinue).Source
+    if (-not $pnpmCmd) { $pnpmCmd = (Get-Command "pnpm" -ErrorAction Stop).Source }
+    $frontend = Start-Process -FilePath $pnpmCmd `
         -ArgumentList "dev" `
         -WorkingDirectory $frontendDir `
         -PassThru -NoNewWindow
 } else {
-    Write-Host "frontend/ not scaffolded yet — backend only (http://localhost:8010)"
+    Write-Host "frontend/ not scaffolded yet - backend only (http://localhost:8010)"
     $frontend = $null
 }
 
