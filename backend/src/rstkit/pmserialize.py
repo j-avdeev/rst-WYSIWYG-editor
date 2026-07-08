@@ -53,6 +53,11 @@ def normalize_mark(marks: list[dict] | None) -> tuple[str, str] | None:
 _ESCAPE_CHARS = re.compile(r"([\\`*|])")
 # an underscore that ends a word (what rst would read as a reference suffix)
 _TRAILING_UNDERSCORE = re.compile(r"(?<=\w)_(?=[\s\W]|$)")
+# docutils auto-links standalone emails ("a@b.c") and scheme URIs
+# ("http://x", "mailto:x") in plain text; escaping the @ / the scheme colon
+# breaks that recognition without changing the rendered text (fuzz-found:
+# plain "0@*" re-parsed as a mailto reference)
+_SCHEME_COLON = re.compile(r"(?<=[A-Za-z0-9])(:)(?=\S)")
 
 
 _SOFT_WRAP = re.compile(r"[ \t]*\n[ \t]*")
@@ -61,19 +66,31 @@ _SOFT_WRAP = re.compile(r"[ \t]*\n[ \t]*")
 def collapse_soft_wraps(text: str) -> str:
     """docutils astext() keeps source soft-wraps as newlines; an edited
     paragraph re-flows to a single line (design decision, see module doc).
-    Also drops any stray docutils NUL escape markers defensively."""
-    return _SOFT_WRAP.sub(" ", text).replace("\x00", "")
+    Tabs become spaces (the rst parser expands them anyway, so they can't
+    round-trip), and stray docutils NUL escape markers are dropped."""
+    return _SOFT_WRAP.sub(" ", text).replace("\t", " ").replace("\x00", "")
 
 
 def escape_text(text: str) -> str:
     text = _ESCAPE_CHARS.sub(r"\\\1", text)
     text = _TRAILING_UNDERSCORE.sub(r"\\_", text)
+    text = text.replace("@", "\\@")
+    text = _SCHEME_COLON.sub(r"\\:", text)
     return text
 
 
-# a serialized paragraph line must not be mistaken for block-level markup
+# a serialized paragraph line must not be mistaken for block-level markup;
+# list/comment markers count both mid-line ("- x") and bare at end-of-line
+# ("-" alone is an empty bullet item — fuzz-found). rst enumerators are not
+# just arabic: alphabetic ("A."), roman ("X)" — fuzz-found), "#", and the
+# parenthesized form "(x)" all count; over-guarding is harmless since the
+# backslash escape vanishes at parse.
+_ENUM = r"(\d+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+|#)"
 _BLOCK_START = re.compile(
-    r"^(\.\.\s|::|\s|-\s|\*\s|\+\s|\d+[.)]\s|#\.\s|>>>\s|\|(?:\s|$)|:[\w.-]+:(?:\s|$))"
+    r"^(\.\.(\s|$)|::|\s|[-*+](\s|$)"
+    rf"|{_ENUM}[.)](\s|$)"
+    rf"|\({_ENUM}\)(\s|$)"
+    r"|>>>\s|\|(\s|$)|:[\w.-]+:(\s|$))"
 )
 
 
@@ -105,6 +122,9 @@ def _wrap(mark: tuple[str, str] | None, text: str) -> str:
     if kind == "code":
         if "``" in text:
             raise SerializeError("literal text cannot contain ``")
+        if text.startswith("`") or text.endswith("`"):
+            # would merge with the ``...`` delimiters
+            raise SerializeError("literal text cannot start or end with a backtick")
         return f"``{text}``"
     if kind == "link":
         body = text.replace("`", "\\`")
@@ -157,15 +177,26 @@ def serialize_inline(content: list[PMNode]) -> str:
             raise SerializeError(f"unknown inline node {t!r}")
 
     # 2. emit, inserting escaped-space separators where markup would touch
-    #    word characters (rst inline recognition rules).
+    #    word characters (rst inline recognition rules). Whitespace at the
+    #    edges of a marked run moves OUTSIDE the markup ("** a**" is invalid
+    #    rst); marks on pure whitespace are invisible and drop to plain text.
+    #    The canonical form (verify._merge_leaves) applies the same
+    #    normalization, so both sides stay comparable.
     out: list[str] = []
-    prev_needs_gap_after = False  # previous segment was wrapped markup
+    prev_needs_gap_after = False  # previous piece ended with a markup end-string
     prev_char = ""
     for kind, payload in segments:
         if kind == "text":
             mark, text = payload
-            wrapped = _is_markup_wrapped(mark)
-            piece = _wrap(mark, text)
+            core = text.strip()
+            if mark is None or not core:
+                wrapped = False
+                piece = escape_text(text)
+            else:
+                lead = text[: len(text) - len(text.lstrip())]
+                trail = text[len(text.rstrip()) :]
+                wrapped = True
+                piece = lead + _wrap(mark, core) + trail
         elif kind == "math":
             if "`" in payload:
                 raise SerializeError("math content cannot contain a backtick")
@@ -179,14 +210,17 @@ def serialize_inline(content: list[PMNode]) -> str:
 
         if not piece:
             continue
-        if wrapped and prev_char and not _boundary_ok(prev_char):
+        starts_with_markup = wrapped and not piece[0].isspace()
+        if starts_with_markup and prev_char and not _boundary_ok(prev_char):
             out.append("\\ ")
         if prev_needs_gap_after and piece and not _boundary_ok(piece[0]):
             out.append("\\ ")
         out.append(piece)
-        prev_needs_gap_after = wrapped
+        prev_needs_gap_after = wrapped and not piece[-1].isspace()
         prev_char = piece[-1]
-    return "".join(out)
+    # leading/trailing whitespace on the assembled line cannot survive an rst
+    # round-trip (it would change block structure); canon trims it identically
+    return "".join(out).strip()
 
 
 def _boundary_ok(ch: str) -> bool:

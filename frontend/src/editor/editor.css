@@ -280,6 +280,81 @@
   background: #eef2ff;
 }
 
+.table-options {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.table-options__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-options__label {
+  width: 90px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #52525b;
+  font-family: Consolas, monospace;
+}
+
+.table-options__row input {
+  flex: 1;
+  border: 1px solid #d4d4d8;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: Consolas, 'Cascadia Code', monospace;
+}
+
+.table-options__name {
+  max-width: 140px;
+}
+
+.table-options__note {
+  font-size: 12px;
+  color: #a1a1aa;
+  font-style: italic;
+}
+
+.table-options__row button {
+  border: none;
+  background: transparent;
+  color: #a1a1aa;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+}
+
+.table-options__row button:hover {
+  color: #b91c1c;
+}
+
+.table-options__add {
+  align-self: flex-start;
+  border: 1px dashed #cbd5e1;
+  background: transparent;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #52525b;
+  cursor: pointer;
+}
+
+.table-options__add:hover {
+  border-color: #a5b4fc;
+  color: #1e3a8a;
+}
+
+.table-options__hint {
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
 .table-toolbar {
   position: sticky;
   top: 49px; /* sits just below the sticky .main-toolbar (~41px tall) */

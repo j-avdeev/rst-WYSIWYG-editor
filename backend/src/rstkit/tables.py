@@ -262,27 +262,33 @@ def _csv_quote(value: str, *, raw: str, prefix: str, quoted: bool, delimiter: st
     return f"{prefix}{quotechar}{escaped}{quotechar}"
 
 
-def _serialize_cell(cell: dict[str, Any], delimiter: str, quotechar: str) -> str:
-    from .pmserialize import serialize_inline
+def _serialize_cell(
+    cell: dict[str, Any], delimiter: str, quotechar: str, *, force: bool = False
+) -> str:
+    from .pmserialize import guard_line_start, serialize_inline
 
     attrs = cell.get("attrs") or {}
     current = _cell_current_content(cell)
     initial = attrs.get("csvInitialContent")
     raw = str(attrs.get("csvRaw", ""))
-    if initial == current and raw:
+    if not force and initial == current and raw:
         return raw
-    value = serialize_inline(current)
+    # cell payloads are re-parsed as isolated fragments, so a value like
+    # ".. x" or "- item" needs the same block-start guard a paragraph gets
+    value = guard_line_start(serialize_inline(current))
     return _csv_quote(
         value,
         raw=raw,
-        prefix=str(attrs.get("csvPrefix", "")),
+        prefix=str(attrs.get("csvPrefix", "")) if not force else "",
         quoted=bool(attrs.get("csvQuoted", True)),
         delimiter=delimiter,
         quotechar=quotechar,
     )
 
 
-def _serialize_pm_row(row: dict[str, Any], delimiter: str, quotechar: str) -> str:
+def _serialize_pm_row(
+    row: dict[str, Any], delimiter: str, quotechar: str, *, force: bool = False
+) -> str:
     from .pmserialize import SerializeError
 
     if row.get("type") != "table_row":
@@ -290,7 +296,9 @@ def _serialize_pm_row(row: dict[str, Any], delimiter: str, quotechar: str) -> st
     cells = row.get("content") or []
     if not cells:
         raise SerializeError("csv-table row is empty")
-    return delimiter.join(_serialize_cell(cell, delimiter, quotechar) for cell in cells)
+    return delimiter.join(
+        _serialize_cell(cell, delimiter, quotechar, force=force) for cell in cells
+    )
 
 
 def _row_is_clean(row: dict[str, Any]) -> bool:
@@ -316,11 +324,35 @@ def serialize_csv_table_pm(pm: PMNode) -> list[str]:
     if meta.get("kind") != "csv_table":
         raise SerializeError("unsupported table node")
 
-    delimiter = str(meta.get("delimiter", ","))
-    quotechar = str(meta.get("quote", '"'))
     indent = str(meta.get("indent", "   "))
+
+    # The effective CSV dialect MUST come from the option lines that will
+    # actually be written, derived exactly the way csv_table_to_view derives
+    # it on re-parse — never from meta alone. Otherwise a constructed or
+    # options-edited table can write cells in one dialect while the directive
+    # declares another (fuzz-found: empty cell emitted as '' under a quote
+    # dialect the directive never declared).
+    delimiter = ","
+    quotechar = '"'
+    try:
+        for opt in meta.get("options") or []:
+            name = str(opt.get("name", "")).lower()
+            if name in {"delim", "delimiter"}:
+                delimiter = _dialect_value(str(opt.get("value", "")))
+            elif name == "quote":
+                quotechar = _dialect_value(str(opt.get("value", "")))
+    except ValueError as exc:
+        raise SerializeError(str(exc)) from exc
     if len(delimiter) != 1 or len(quotechar) != 1:
         raise SerializeError("csv-table uses unsupported dialect")
+
+    # Raw row/cell tokens were captured under the dialect the table was
+    # PARSED with (meta.delimiter/quote). If an options edit changed the
+    # effective dialect, every preserved raw would silently stay in the old
+    # dialect — so a dialect change forces full re-serialization instead.
+    force = delimiter != str(meta.get("delimiter", ",")) or quotechar != str(
+        meta.get("quote", '"')
+    )
 
     rows = pm.get("content") or []
     if not rows:
@@ -338,10 +370,12 @@ def serialize_csv_table_pm(pm: PMNode) -> list[str]:
             if not header_enabled:
                 continue
             header = rows[0]
-            if _row_is_clean(header) and opt.get("raw"):
+            if not force and _row_is_clean(header) and opt.get("raw"):
                 lines.append(str(opt["raw"]))
             else:
-                lines.append(f"{indent}:header: {_serialize_pm_row(header, delimiter, quotechar)}")
+                lines.append(
+                    f"{indent}:header: {_serialize_pm_row(header, delimiter, quotechar, force=force)}"
+                )
             header_written = True
         else:
             raw = opt.get("raw")
@@ -351,14 +385,18 @@ def serialize_csv_table_pm(pm: PMNode) -> list[str]:
                 lines.append(f"{indent}:{name}: {opt.get('value', '')}".rstrip())
 
     if header_enabled and not header_written:
-        lines.append(f"{indent}:header: {_serialize_pm_row(rows[0], delimiter, quotechar)}")
+        lines.append(
+            f"{indent}:header: {_serialize_pm_row(rows[0], delimiter, quotechar, force=force)}"
+        )
 
     if body_rows:
         lines.append("")
         for row in body_rows:
             row_attrs = row.get("attrs") or {}
-            if _row_is_clean(row) and row_attrs.get("csvRaw"):
+            if not force and _row_is_clean(row) and row_attrs.get("csvRaw"):
                 lines.append(indent + str(row_attrs["csvRaw"]))
             else:
-                lines.append(indent + _serialize_pm_row(row, delimiter, quotechar))
+                lines.append(
+                    indent + _serialize_pm_row(row, delimiter, quotechar, force=force)
+                )
     return lines

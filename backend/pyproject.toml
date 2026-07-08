@@ -15,7 +15,11 @@ dependencies = [
 rstkit = "rstkit.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "httpx>=0.27"]
+dev = [
+    "pytest>=8",
+ "httpx>=0.27",
+ "hypothesis>=6.156.3",
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -35,17 +35,54 @@ class VerifyError(Exception):
 # canonical form: inline
 
 def _merge_leaves(leaves: list[tuple]) -> tuple:
-    merged: list[tuple] = []
+    # Mirror of the serializer's inline normalization (pmserialize.py):
+    # soft-wraps collapse, whitespace at the edges of a marked run counts as
+    # unmarked (the serializer moves it outside the markup because "** a**"
+    # is invalid rst), marks on pure whitespace are invisible, and leading/
+    # trailing whitespace of the whole run is trimmed (it cannot survive an
+    # rst round-trip). Applied to BOTH the PM side and the re-parsed side so
+    # the comparison stays meaningful.
+    split: list[tuple] = []
     for leaf in leaves:
-        if leaf[0] == "text":
-            # paragraphs re-flow on edit, so soft-wrap position is not part
-            # of the meaning being verified
-            leaf = ("text", collapse_soft_wraps(leaf[1]), leaf[2])
+        if leaf[0] != "text":
+            split.append(leaf)
+            continue
+        text = collapse_soft_wraps(leaf[1])
+        if not text:
+            continue
+        core = text.strip()
+        if not core or leaf[2] is None:
+            split.append(("text", text, None if not core else leaf[2]))
+            continue
+        lead = text[: len(text) - len(text.lstrip())]
+        trail = text[len(text.rstrip()) :]
+        if lead:
+            split.append(("text", lead, None))
+        split.append(("text", core, leaf[2]))
+        if trail:
+            split.append(("text", trail, None))
+
+    merged: list[tuple] = []
+    for leaf in split:
         if not (leaf[0] == "text" and leaf[1] == ""):
             if merged and leaf[0] == "text" and merged[-1][0] == "text" and merged[-1][2] == leaf[2]:
                 merged[-1] = ("text", merged[-1][1] + leaf[1], leaf[2])
             else:
                 merged.append(leaf)
+
+    # trim run edges
+    while merged and merged[0][0] == "text":
+        stripped = merged[0][1].lstrip()
+        if stripped:
+            merged[0] = ("text", stripped, merged[0][2])
+            break
+        merged.pop(0)
+    while merged and merged[-1][0] == "text":
+        stripped = merged[-1][1].rstrip()
+        if stripped:
+            merged[-1] = ("text", stripped, merged[-1][2])
+            break
+        merged.pop()
     return tuple(merged)
 
 

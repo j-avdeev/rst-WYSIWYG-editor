@@ -225,7 +225,43 @@ function MainToolbar({
   )
 }
 
-function TableToolbar({ viewRef }: { viewRef: RefObject<EditorView | null> }) {
+// csv meta carried on the PM table node (mirror of backend tables.py view)
+export interface CsvOption {
+  name: string
+  value: string
+  raw?: string
+}
+
+export interface CsvMeta {
+  kind: string
+  caption: string
+  directive: string
+  indent: string
+  delimiter: string
+  quote: string
+  options: CsvOption[]
+  hasHeader: boolean
+}
+
+/** The csv table node surrounding the selection, or null. */
+function findCsvTable(state: EditorState): { pos: number; meta: CsvMeta } | null {
+  const { $from } = state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth)
+    if (node.type.name === 'table' && (node.attrs.csv as CsvMeta | null)?.kind === 'csv_table') {
+      return { pos: $from.before(depth), meta: node.attrs.csv as CsvMeta }
+    }
+  }
+  return null
+}
+
+function TableToolbar({
+  viewRef,
+  onOpenOptions,
+}: {
+  viewRef: RefObject<EditorView | null>
+  onOpenOptions: () => void
+}) {
   const run = (command: Command) => {
     const view = viewRef.current
     if (!view) return
@@ -254,6 +290,115 @@ function TableToolbar({ viewRef }: { viewRef: RefObject<EditorView | null> }) {
       <button type="button" title="Delete selected column" onMouseDown={(e) => e.preventDefault()} onClick={() => run(deleteColumn)}>
         Col -
       </button>
+      <span className="table-toolbar__separator" />
+      <button type="button" title="Edit caption and directive options" onMouseDown={(e) => e.preventDefault()} onClick={onOpenOptions}>
+        ⚙ Options
+      </button>
+    </div>
+  )
+}
+
+const KNOWN_CSV_OPTIONS = [
+  'widths', 'width', 'align', 'header-rows', 'stub-columns', 'delim', 'quote', 'keepspace', 'escape', 'class', 'name',
+]
+
+interface TableOptionsDraft {
+  pos: number
+  meta: CsvMeta
+  caption: string
+  options: { name: string; value: string; origIndex: number | null }[]
+}
+
+function TableOptionsModal({
+  draft,
+  onChange,
+  onCancel,
+  onApply,
+}: {
+  draft: TableOptionsDraft
+  onChange: (d: TableOptionsDraft) => void
+  onCancel: () => void
+  onApply: () => void
+}) {
+  const setOption = (i: number, field: 'name' | 'value', v: string) => {
+    const options = draft.options.map((o, j) => (j === i ? { ...o, [field]: v } : o))
+    onChange({ ...draft, options })
+  }
+  return (
+    <div className="opaque-modal__backdrop" onClick={onCancel}>
+      <div className="opaque-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="opaque-modal__title">Table options — .. csv-table::</div>
+        <div className="table-options">
+          <label className="table-options__row">
+            <span className="table-options__label">Caption</span>
+            <input
+              value={draft.caption}
+              onChange={(e) => onChange({ ...draft, caption: e.target.value })}
+              placeholder="(no caption)"
+            />
+          </label>
+          {draft.options.map((opt, i) =>
+            opt.name === 'header' ? (
+              <div className="table-options__row" key={i}>
+                <span className="table-options__label">:header:</span>
+                <span className="table-options__note">edited via the first table row</span>
+              </div>
+            ) : (
+              <div className="table-options__row" key={i}>
+                <input
+                  className="table-options__name"
+                  value={opt.name}
+                  list="csv-option-names"
+                  onChange={(e) => setOption(i, 'name', e.target.value)}
+                  placeholder="option"
+                />
+                <input
+                  value={opt.value}
+                  onChange={(e) => setOption(i, 'value', e.target.value)}
+                  placeholder="value"
+                />
+                <button
+                  type="button"
+                  title="Remove option"
+                  onClick={() =>
+                    onChange({ ...draft, options: draft.options.filter((_, j) => j !== i) })
+                  }
+                >
+                  ✕
+                </button>
+              </div>
+            ),
+          )}
+          <datalist id="csv-option-names">
+            {KNOWN_CSV_OPTIONS.map((n) => (
+              <option value={n} key={n} />
+            ))}
+          </datalist>
+          <button
+            type="button"
+            className="table-options__add"
+            onClick={() =>
+              onChange({
+                ...draft,
+                options: [...draft.options, { name: '', value: '', origIndex: null }],
+              })
+            }
+          >
+            + Add option
+          </button>
+          <div className="table-options__hint">
+            Changing :delim: or :quote: rewrites the whole table body in the new dialect.
+          </div>
+        </div>
+        <div className="opaque-modal__actions">
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="primary" onClick={onApply}>
+            Apply
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -323,6 +468,7 @@ export function Editor({
   const [tableActive, setTableActive] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [folderConnected, setFolderConnected] = useState(false)
+  const [tableOpts, setTableOpts] = useState<TableOptionsDraft | null>(null)
   const viewRef = useRef<EditorView | null>(null)
   const opaqueTextareaRef = useRef<HTMLTextAreaElement>(null)
   const mathTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -488,6 +634,60 @@ export function Editor({
     setOpaqueEdit(null)
   }
 
+  const openTableOptions = () => {
+    const view = viewRef.current
+    if (!view) return
+    const found = findCsvTable(view.state)
+    if (!found) return
+    setTableOpts({
+      pos: found.pos,
+      meta: found.meta,
+      caption: found.meta.caption ?? '',
+      options: (found.meta.options ?? []).map((o, i) => ({
+        name: o.name,
+        value: o.value,
+        origIndex: i,
+      })),
+    })
+  }
+
+  const applyTableOptions = () => {
+    const view = viewRef.current
+    if (!view || !tableOpts) return
+    const node = view.state.doc.nodeAt(tableOpts.pos)
+    if (!node || node.type.name !== 'table') {
+      setTableOpts(null)
+      return
+    }
+    const orig = tableOpts.meta
+    const options: CsvOption[] = []
+    for (const o of tableOpts.options) {
+      const name = o.name.trim()
+      if (!name) continue
+      const original = o.origIndex !== null ? orig.options[o.origIndex] : null
+      if (original && original.name === name && original.value === o.value) {
+        options.push(original) // untouched: keeps its raw line byte-identical
+      } else {
+        options.push({ name, value: o.value, raw: '' }) // re-emitted canonically
+      }
+    }
+    const captionChanged = tableOpts.caption !== orig.caption
+    const csv: CsvMeta = {
+      ...orig,
+      caption: tableOpts.caption,
+      directive: captionChanged ? '' : orig.directive,
+      options,
+      // delimiter/quote stay at their PARSE-time values on purpose: the
+      // backend compares them against the options' effective dialect to
+      // decide whether raw-preservation is still safe
+    }
+    view.dispatch(
+      view.state.tr.setNodeMarkup(tableOpts.pos, undefined, { ...node.attrs, csv }),
+    )
+    setTableOpts(null)
+    view.focus()
+  }
+
   const commitMathEdit = () => {
     const view = viewRef.current
     if (!view || !mathEdit) return
@@ -527,7 +727,15 @@ export function Editor({
           </button>
         </div>
       )}
-      {tableActive && <TableToolbar viewRef={viewRef} />}
+      {tableActive && <TableToolbar viewRef={viewRef} onOpenOptions={openTableOptions} />}
+      {tableOpts && (
+        <TableOptionsModal
+          draft={tableOpts}
+          onChange={setTableOpts}
+          onCancel={() => setTableOpts(null)}
+          onApply={applyTableOptions}
+        />
+      )}
       <div className="editor-host" ref={hostRef} />
 
       {opaqueEdit && (
