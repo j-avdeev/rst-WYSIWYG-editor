@@ -5,13 +5,17 @@ Semi-WYSIWYG editor for Sphinx `.rst` projects (built for the PRADIS Manual,
 ProseMirror frontend. Core guarantee: **files round-trip byte-identical** —
 only blocks you actually edit are re-serialized, so git diffs stay minimal.
 
-Development plan: see `.claude/plans/` (approved 2026-07). Current status:
-**Phase 2 complete** — the editing core. Rich blocks (headings, paragraphs,
-lists, literal blocks) are editable in ProseMirror; opaque cards edit as raw
-source in a modal. Saving re-emits untouched blocks byte-for-byte and routes
-every edited block through serialize → re-parse → canonical-compare
-(verify-reparse); a failed verification rejects the save instead of writing.
-Live server-rendered preview + source view with dirty-block highlighting.
+Development plan, architecture, and current phase status: **[PLAN.md](PLAN.md)**
+— read that first before making changes, especially the "Status" and
+"Design principles" sections at the top.
+
+Current status: **Phase 2 complete** — the editing core. Rich blocks
+(headings, paragraphs, lists, literal blocks) are editable in ProseMirror;
+opaque cards edit as raw source in a modal. Saving re-emits untouched blocks
+byte-for-byte and routes every edited block through serialize → re-parse →
+canonical-compare (verify-reparse); a failed verification rejects the save
+instead of writing. Live server-rendered preview + source view with
+dirty-block highlighting. Next: **Phase 3 — csv-table editing** (see PLAN.md).
 
 ## Layout
 
