@@ -13,7 +13,7 @@
 | 0 — Round-trip spike + harness | ✅ done | `947cb30` | Identity mode 100% byte-identical on all 2,093 corpus files |
 | 1 — Read-only browser | ✅ done | `2b042a2`, `c9baa36` | FastAPI + file tree + read-only ProseMirror render |
 | 2 — Editing core | ✅ done | `29be4e3` | Dirty-node serialize + verify-reparse; `rstkit strict` 100.00% (10,884/10,884 blocks). AC verified on real corpus: one-line edit → exactly one git hunk |
-| 3 — csv-table editing | ⏳ next | — | **The crux** (see Risk register #2). 2,946 tables in corpus, cells contain links + `\|substitution\|` icons |
+| 3 — csv-table editing | in progress | — | Inline csv-table parser/rendering, dirty-cell serializer with clean-cell raw preservation, and row/column toolbar landed. Full strict 100.00% (13,764/13,764 blocks; 2,879 csv_table) on 2026-07-08. Remaining: options popover + fuzz/property coverage |
 | 4 — figure/image + math | not started | | |
 | 5 — Git UI + file management | not started | | |
 | 6 — Huge files | not started | | errors.rst = 463 KB, the size outlier |
@@ -107,12 +107,12 @@ scripts/dev.ps1        # uvicorn --reload + vite dev (proxy /api -> backend)
 ### Opaque blocks ("source cards")
 PM `opaque_block` (atom, isolating; attrs: raw, kind, label, srcId). Card shows raw text with a directive-name badge; "Edit source" opens a modal editing raw text directly — saved as an `op: "rawedit"` block (EOL-normalized, otherwise untouched). This is what makes the editor safe on constructs it doesn't understand, and — per the "poison, don't drop" principle — is also the fallback for any *whitelisted* construct that turns out to contain something the enrichment can't safely represent.
 
-### csv-table editing — the flagship feature (2,946 instances) — **Phase 3, not yet built**
-- Backend `tables.py` (to write): parse ordered raw options; parse body with Python `csv` honoring `:delim:`/`:quote:`; each cell payload parsed as an **rst inline fragment** (links, `|subst|` refs, literals, `:math:`, unknown -> inline_opaque). `:file:`-based tables render read-only.
+### csv-table editing — the flagship feature (2,946 instances) — **Phase 3, in progress**
+- Backend `tables.py`: parses ordered raw options; parses body with Python `csv`; each supported cell payload is parsed as an **rst inline fragment** (links, `|subst|` refs, literals, `:math:`). Unsupported dialects/shapes and `:file:`-based tables stay opaque.
 - **Cell-level raw preservation**: each cell keeps its original CSV token (quoting style + spacing). Dirty-table serialization re-joins cell-by-cell — clean cells/rows emit raw text verbatim; edited cells serialize inline -> rst -> CSV-quote. **Editing one cell should diff one line.**
-- Frontend: `csv_table` node backed by prosemirror-tables with rich inline cell content (links clickable, `|Fluid|` shows its icon). Options via properties popover (never reorders untouched options). Row/col ops mark affected rows dirty.
+- Frontend: `csv_table` node backed by prosemirror-tables with rich inline cell content (links clickable, `|Fluid|` shows its icon). Row/col toolbar is implemented and structural edits verify on save. Options via properties popover still pending (never reorder untouched options).
 - Round-trip property tests corpus-wide: parse cells -> force-reserialize -> re-parse -> doctree-equal; plus dirty-one-cell simulations asserting single-line diffs. Hypothesis fuzzing for CSV-quoting x rst-escaping edge cases.
-- This is where the `rstkit strict` gate earns its keep — extend it to cover csv-table cells specifically once built.
+- This is where the `rstkit strict` gate earns its keep — it now covers supported csv-table cells (2,879 tables in the full corpus pass on 2026-07-08). Keep expanding coverage as row/column operations and options editing land.
 
 ### Substitutions & includes
 - On doc open, `subst.py` scans that file's own text for `.. |name| image::`/`.. |name| replace::` definitions (corpus survey confirmed these are defined locally, not via `rst_prolog`). Editor renders `|Fluid|` as its icon (tooltip = name); unknown -> labeled chip. **Serialization always emits `|name|` untouched** (substitution refs are atoms; the reference is the data).
@@ -153,11 +153,11 @@ uv run rstkit roundtrip <docs-path> [--fail-on-diff] [--no-health]   # identity 
 uv run rstkit strict <docs-path> [--threshold N]                     # verify-reparse mode
 ```
 - **Identity mode**: zero-dirty serialize -> byte compare. Pass = 100% byte-identical, zero normalizations. Also checks the span-partition invariant.
-- **Strict mode**: for every block the editor could edit richly, simulate a dirty save (view -> PM via `pmbridge.py` -> serialize -> verify) and report the pass rate. Current: **100.00% over 10,884 blocks**. Extend this as new node types (csv-table, etc.) join the whitelist.
+- **Strict mode**: for every block the editor could edit richly, simulate a dirty save (view -> PM via `pmbridge.py` -> serialize -> verify) and report the pass rate. Current: **100.00% over 13,764 blocks** including 2,879 csv-tables.
 
 ## Risk register
 1. **Span-mapping fidelity** (docutils line info inconsistent for nested content) -> partition invariant checked on every parse; unmapped regions degrade to opaque cards (never data loss); verify-reparse blocks bad saves; corpus harness run continuously.
-2. **csv-table cell markup** (CSV quoting x rst escaping) -> cell-level raw preservation confines re-serialization to edited cells; corpus property tests + Hypothesis fuzzing. **Not yet built — this is Phase 3.**
+2. **csv-table cell markup** (CSV quoting x rst escaping) -> initial cell-level raw preservation confines re-serialization to edited cells; corpus strict covers supported csv-tables. Row/column operation tests exist; still needs Hypothesis fuzzing and options-edit coverage.
 3. **463 KB files** -> Phase 6 outline mode built on the span model; until then oversized files fall back to unenriched plain display rather than freezing (implemented).
 4. **Substitution resolution** (defined per-file, confirmed by survey) -> per-file scan; unresolved names = harmless chips; resolution never affects serialization.
 5. **Cyrillic/Windows quirks** (BOM, CRLF, docutils version drift, NUL escape markers, PowerShell encoding) -> bytes-in/bytes-out with per-file EOL+BOM metadata; docutils pinned; 1,601 Cyrillic files exercised continuously by the harness; several concrete bugs already found and fixed this way (see commit `29be4e3`).

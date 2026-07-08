@@ -61,6 +61,51 @@
   color: #2563eb;
 }
 
+.editor-host table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.9em 0;
+  font-size: 0.92em;
+}
+
+.editor-host caption {
+  caption-side: top;
+  text-align: left;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.editor-host th,
+.editor-host td {
+  border: 1px solid #d4d4d8;
+  padding: 5px 7px;
+  vertical-align: top;
+}
+
+.editor-host th {
+  background: #f4f4f5;
+  font-weight: 600;
+}
+
+.editor-host td p,
+.editor-host th p {
+  margin: 0;
+}
+
+.editor-host .selectedCell {
+  background: #eff6ff;
+}
+
+.editor-host .column-resize-handle {
+  background: #2563eb;
+  bottom: -1px;
+  pointer-events: none;
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 3px;
+}
+
 .editor-host .inline-opaque {
   border-bottom: 1px dotted #b91c1c;
   color: #b91c1c;
@@ -122,6 +167,157 @@
 
 .editor-wrap {
   position: relative;
+}
+
+.main-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  padding: 6px 32px;
+  border-bottom: 1px solid #e4e4e7;
+  background: #fafafa;
+}
+
+.main-toolbar button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d4d4d8;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  color: #27272a;
+}
+
+.main-toolbar button:hover {
+  border-color: #a5b4fc;
+  background: #eef2ff;
+}
+
+.editor-host .opaque-block__thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  margin: 8px 8px 0;
+  border-radius: 4px;
+  border: 1px solid #e4e4e7;
+}
+
+.editor-host .inline-math-view {
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.editor-host .inline-math-view:hover {
+  background: #eef2ff;
+  outline: 1px dashed #a5b4fc;
+}
+
+.editor-host .inline-math-view--empty {
+  font-family: Consolas, monospace;
+  font-size: 0.85em;
+  color: #71717a;
+  background: #f4f4f5;
+}
+
+.editor-host .inline-math-view--error {
+  font-family: Consolas, monospace;
+  font-size: 0.85em;
+  color: #b91c1c;
+  background: #fef2f2;
+  border-bottom: 1px dotted #b91c1c;
+}
+
+.opaque-modal__textarea--math {
+  min-height: 90px;
+  flex: none;
+}
+
+.image-replace {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.image-replace__thumb {
+  max-width: 160px;
+  max-height: 100px;
+  border-radius: 4px;
+  border: 1px solid #d4d4d8;
+  background: #fff;
+}
+
+.image-replace__thumb--missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 160px;
+  height: 60px;
+  font-size: 11px;
+  color: #a1a1aa;
+  font-family: Consolas, monospace;
+}
+
+.image-replace button {
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.image-replace button:hover {
+  border-color: #a5b4fc;
+  background: #eef2ff;
+}
+
+.table-toolbar {
+  position: sticky;
+  top: 49px; /* sits just below the sticky .main-toolbar (~41px tall) */
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 10px 0 -4px 32px;
+  padding: 4px;
+  border: 1px solid #d4d4d8;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(24, 24, 27, 0.12);
+}
+
+.table-toolbar button {
+  min-width: 52px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #27272a;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.table-toolbar button:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.table-toolbar__separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: #e4e4e7;
 }
 
 .opaque-modal__backdrop {

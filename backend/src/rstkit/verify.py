@@ -150,6 +150,46 @@ def canon_from_pm(node: PMNode) -> Canon:
     raise VerifyError(f"unsupported pm block {t!r}")
 
 
+def _csv_cell_canon_from_pm(cell: PMNode) -> Canon:
+    if cell.get("type") not in {"table_cell", "table_header"}:
+        raise VerifyError(f"unexpected csv-table cell {cell.get('type')!r}")
+    content = cell.get("content") or []
+    if len(content) != 1 or content[0].get("type") != "paragraph":
+        raise VerifyError("csv-table cells support one paragraph only")
+    return _merge_leaves(_pm_inline_leaves(content[0].get("content") or []))
+
+
+def _csv_canon_from_pm(table: PMNode) -> Canon:
+    rows = []
+    for row in table.get("content") or []:
+        if row.get("type") != "table_row":
+            raise VerifyError("csv-table expected table_row")
+        rows.append(tuple(_csv_cell_canon_from_pm(cell) for cell in row.get("content") or []))
+    return ("csv_table", tuple(rows))
+
+
+def _csv_canon_from_view(view: dict) -> Canon:
+    if view.get("type") != "csv_table":
+        raise VerifyError(f"unsupported csv-table view {view.get('type')!r}")
+    rows = []
+    header = view.get("header")
+    if header:
+        rows.append(
+            tuple(
+                _merge_leaves(_view_inline_leaves(cell.get("children") or [], []))
+                for cell in header.get("cells") or []
+            )
+        )
+    for row in view.get("rows") or []:
+        rows.append(
+            tuple(
+                _merge_leaves(_view_inline_leaves(cell.get("children") or [], []))
+                for cell in row.get("cells") or []
+            )
+        )
+    return ("csv_table", tuple(rows))
+
+
 def _flatten_singleton_group(canon: Canon) -> Canon:
     # a one-child group is indistinguishable from its child after reparse
     while canon[0] == "group" and len(canon[1]) == 1:
@@ -166,6 +206,8 @@ def serialize_and_verify_block(pm: PMNode) -> str:
     Raises SerializeError/VerifyError on failure."""
     if pm.get("type") == "heading":
         return _serialize_and_verify_heading(pm)
+    if pm.get("type") == "table" and (pm.get("attrs") or {}).get("csv", {}).get("kind") == "csv_table":
+        return _serialize_and_verify_csv_table(pm)
 
     lines = serialize_block(pm)
     text = "\n".join(lines)
@@ -180,6 +222,23 @@ def serialize_and_verify_block(pm: PMNode) -> str:
     if expected != actual:
         raise VerifyError(
             "serialized block re-parses differently", expected=expected, actual=actual
+        )
+    return text
+
+
+def _serialize_and_verify_csv_table(pm: PMNode) -> str:
+    from .tables import csv_table_to_view
+
+    lines = serialize_block(pm)
+    text = "\n".join(lines)
+    reparsed = csv_table_to_view(text + "\n")
+    if reparsed is None:
+        raise VerifyError("serialized csv-table did not re-parse", actual=text)
+    expected = _csv_canon_from_pm(pm)
+    actual = _csv_canon_from_view(reparsed)
+    if expected != actual:
+        raise VerifyError(
+            "serialized csv-table re-parses differently", expected=expected, actual=actual
         )
     return text
 

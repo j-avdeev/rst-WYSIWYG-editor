@@ -76,3 +76,11 @@ export function assetUrl(docPath: string, uri: string): string {
   const params = new URLSearchParams({ doc: docPath, uri })
   return `/api/asset?${params.toString()}`
 }
+
+export async function uploadAsset(docPath: string, file: File): Promise<{ uri: string }> {
+  const form = new FormData()
+  form.append('doc', docPath)
+  form.append('file', file)
+  const res = await fetch('/api/asset', { method: 'POST', body: form })
+  return jsonOrError(res)
+}

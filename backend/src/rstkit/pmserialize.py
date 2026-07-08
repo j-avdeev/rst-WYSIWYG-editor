@@ -225,6 +225,11 @@ def serialize_block(node: PMNode) -> list[str]:
     if t == "block_group":
         return _serialize_group(node.get("content") or [])
 
+    if t == "table" and (node.get("attrs") or {}).get("csv", {}).get("kind") == "csv_table":
+        from .tables import serialize_csv_table_pm
+
+        return serialize_csv_table_pm(node)
+
     if t == "opaque_block":
         raw = str(node.get("attrs", {}).get("raw", ""))
         return raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")

@@ -33,6 +33,18 @@ export interface ViewNode {
   text?: string
   href?: string
   name?: string
+  raw?: string
+  prefix?: string
+  quoted?: boolean
+  caption?: string
+  directive?: string
+  indent?: string
+  delimiter?: string
+  quote?: string
+  options?: Array<Record<string, unknown>>
+  header?: { raw?: string; cells?: ViewNode[] } | null
+  rows?: Array<{ raw?: string; cells?: ViewNode[] }>
+  cells?: ViewNode[]
   term?: ViewNode[]
   children?: ViewNode[]
 }

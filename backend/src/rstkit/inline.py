@@ -244,5 +244,9 @@ def enrich_nodes(nodes: list[EdNode]) -> None:
                 enrich_text_node(node)
             elif node.type == "heading":
                 enrich_heading_node(node)
+            elif node.type == "directive" and node.attrs.get("name") == "csv-table":
+                from .tables import csv_table_to_view
+
+                node.view = csv_table_to_view(node.raw_source)
         except Exception:
             node.view = None

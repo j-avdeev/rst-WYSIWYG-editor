@@ -103,8 +103,53 @@ function convertBlock(view: ViewNode, docPath: string): PMNode {
       if (!content.length) throw new Unsupported('empty block_group')
       return { type: 'block_group', content }
     }
+    case 'csv_table':
+      return convertCsvTable(view, docPath)
     default:
       throw new Unsupported(`block: ${view.type}`)
+  }
+}
+
+function convertCsvCell(cell: ViewNode, cellType: 'table_cell' | 'table_header', docPath: string): PMNode {
+  const content = nonEmptyInline(flattenChildren(cell, [], docPath))
+  return {
+    type: cellType,
+    attrs: {
+      csvRaw: cell.raw ?? '',
+      csvPrefix: cell.prefix ?? '',
+      csvQuoted: cell.quoted ?? true,
+      csvInitialContent: content,
+    },
+    content: [{ type: 'paragraph', content }],
+  }
+}
+
+function convertCsvRow(row: { raw?: string; cells?: ViewNode[] }, cellType: 'table_cell' | 'table_header', docPath: string): PMNode {
+  const cells = (row.cells ?? []).map((cell) => convertCsvCell(cell, cellType, docPath))
+  if (!cells.length) throw new Unsupported('empty csv row')
+  return { type: 'table_row', attrs: { csvRaw: row.raw ?? '', csvCellCount: cells.length }, content: cells }
+}
+
+function convertCsvTable(view: ViewNode, docPath: string): PMNode {
+  const rows: PMNode[] = []
+  if (view.header) rows.push(convertCsvRow(view.header, 'table_header', docPath))
+  rows.push(...(view.rows ?? []).map((row) => convertCsvRow(row, 'table_cell', docPath)))
+  if (!rows.length) throw new Unsupported('empty csv table')
+  return {
+    type: 'table',
+    attrs: {
+      csv: {
+        kind: 'csv_table',
+        caption: view.caption ?? '',
+        directive: view.directive ?? '',
+        indent: view.indent ?? '   ',
+        delimiter: view.delimiter ?? ',',
+        quote: view.quote ?? '"',
+        options: view.options ?? [],
+        hasHeader: !!view.header,
+      },
+    },
+    content: rows,
   }
 }
 
@@ -164,6 +209,14 @@ function convertTopLevel(node: EdNode, docPath: string): PMNode {
   }
 
   if (node.type === 'text' && node.view) {
+    try {
+      return validated(withSrcId(convertBlock(node.view, docPath), node.id), node)
+    } catch {
+      // fall through to opaque fallback below
+    }
+  }
+
+  if (node.type === 'directive' && node.view?.type === 'csv_table') {
     try {
       return validated(withSrcId(convertBlock(node.view, docPath), node.id), node)
     } catch {

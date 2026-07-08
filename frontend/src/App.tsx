@@ -14,6 +14,23 @@ type Banner =
   | { kind: 'saved' }
   | null
 
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case '&':
+        return '&amp;'
+      case '<':
+        return '&lt;'
+      case '>':
+        return '&gt;'
+      case '"':
+        return '&quot;'
+      default:
+        return '&#39;'
+    }
+  })
+}
+
 export default function App() {
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [tree, setTree] = useState<FileEntry | null>(null)
@@ -48,7 +65,6 @@ export default function App() {
     getDoc(path)
       .then((d) => {
         setDoc(d)
-        refreshPreviewSoon(0)
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false))
@@ -68,8 +84,13 @@ export default function App() {
       setPreviewLoading(true)
       try {
         setPreview(await fetchPreview(path, api.buildBlocks()))
-      } catch {
-        /* preview is best-effort */
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        setPreview({
+          html: `<div class="preview-error">Preview failed: ${escapeHtml(message)}</div>`,
+          text: '',
+          blocks: [],
+        })
       } finally {
         setPreviewLoading(false)
       }
@@ -169,6 +190,7 @@ export default function App() {
                   onReady={(api) => {
                     editorApiRef.current = api
                     setDirtyCount(api.dirtyCount())
+                    refreshPreviewSoon(0)
                   }}
                   onDocChanged={handleDocChanged}
                 />

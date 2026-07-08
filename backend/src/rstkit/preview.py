@@ -89,7 +89,7 @@ def render_preview(text: str, doc_path: str, source_abspath: str | None = None) 
         "math_output": "MathML",
         "embed_stylesheet": False,
         "stylesheet_path": "",
-        "input_encoding": "unicode",
+        "input_encoding": "utf-8",
         "output_encoding": "unicode",
         "warning_stream": False,
     }

@@ -9,13 +9,14 @@ Development plan, architecture, and current phase status: **[PLAN.md](PLAN.md)**
 — read that first before making changes, especially the "Status" and
 "Design principles" sections at the top.
 
-Current status: **Phase 2 complete** — the editing core. Rich blocks
-(headings, paragraphs, lists, literal blocks) are editable in ProseMirror;
-opaque cards edit as raw source in a modal. Saving re-emits untouched blocks
-byte-for-byte and routes every edited block through serialize → re-parse →
-canonical-compare (verify-reparse); a failed verification rejects the save
-instead of writing. Live server-rendered preview + source view with
-dirty-block highlighting. Next: **Phase 3 — csv-table editing** (see PLAN.md).
+Current status: **Phase 3 in progress**. Phase 2's editing core is complete:
+rich blocks (headings, paragraphs, lists, literal blocks) are editable in
+ProseMirror; opaque cards edit as raw source in a modal. The first csv-table
+slice is now in place too: supported inline-body `csv-table` directives render
+as editable ProseMirror tables and dirty cells serialize back through
+verify-reparse with clean-cell raw preservation. Row/column table controls are
+also available in the editor toolbar. Remaining Phase 3 work: options editing
+and fuzz/property coverage.
 
 ## Layout
 

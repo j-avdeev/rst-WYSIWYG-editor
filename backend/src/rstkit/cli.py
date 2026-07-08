@@ -170,6 +170,13 @@ def cmd_strict(args: argparse.Namespace) -> int:
                     skipped["text/" + node.view.get("type", "?")] += 1
                     continue
                 kind = node.view.get("type", "?")
+            elif node.type == "directive" and node.view is not None:
+                try:
+                    pm = pm_from_view(node.view)
+                except UnsupportedView:
+                    skipped["directive/" + node.view.get("type", "?")] += 1
+                    continue
+                kind = node.view.get("type", "?")
             else:
                 skipped[node.type] += 1
                 continue

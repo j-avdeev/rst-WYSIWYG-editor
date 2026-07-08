@@ -83,7 +83,58 @@ def pm_from_view(view: dict) -> PMNode:
         return {"type": pm_type, "content": items}
     if t == "block_group":
         return {"type": "block_group", "content": [pm_from_view(c) for c in view.get("children") or []]}
+    if t == "csv_table":
+        return _pm_from_csv_table(view)
     raise UnsupportedView(f"block {t!r}")
+
+
+def _pm_from_csv_cell(cell: dict, cell_type: str) -> PMNode:
+    content = _inline(cell.get("children") or [], [])
+    attrs = {
+        "csvRaw": cell.get("raw", ""),
+        "csvPrefix": cell.get("prefix", ""),
+        "csvQuoted": bool(cell.get("quoted", True)),
+        "csvInitialContent": content,
+    }
+    return {
+        "type": cell_type,
+        "attrs": attrs,
+        "content": [{"type": "paragraph", "content": content}],
+    }
+
+
+def _pm_from_csv_row(row: dict, cell_type: str) -> PMNode:
+    return {
+        "type": "table_row",
+        "attrs": {"csvRaw": row.get("raw", ""), "csvCellCount": len(row.get("cells") or [])},
+        "content": [_pm_from_csv_cell(cell, cell_type) for cell in row.get("cells") or []],
+    }
+
+
+def _pm_from_csv_table(view: dict) -> PMNode:
+    rows = []
+    header = view.get("header")
+    if header:
+        rows.append(_pm_from_csv_row(header, "table_header"))
+    rows.extend(_pm_from_csv_row(row, "table_cell") for row in view.get("rows") or [])
+    if not rows:
+        raise UnsupportedView("empty csv_table")
+    return {
+        "type": "table",
+        "attrs": {
+            "csv": {
+                "kind": "csv_table",
+                "caption": view.get("caption", ""),
+                "directive": view.get("directive", ""),
+                "indent": view.get("indent", "   "),
+                "delimiter": view.get("delimiter", ","),
+                "quote": view.get("quote", '"'),
+                "options": view.get("options") or [],
+                "hasHeader": bool(header),
+            }
+        },
+        "content": rows,
+    }
 
 
 def pm_from_heading(node: EdNode) -> PMNode:

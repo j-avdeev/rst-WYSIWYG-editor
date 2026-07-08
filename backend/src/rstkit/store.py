@@ -8,6 +8,7 @@ or the FastAPI routers above it.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Protocol
 
@@ -32,6 +33,7 @@ class DocumentStore(Protocol):
     def read_bytes(self, rel_path: str) -> bytes: ...
     def write_bytes(self, rel_path: str, data: bytes) -> None: ...
     def resolve_asset(self, doc_rel_path: str, uri: str) -> Path | None: ...
+    def write_asset(self, doc_rel_path: str, filename: str, data: bytes) -> str: ...
 
 
 _RST_OR_DIR_SKIP = {".git", "build", "_build", "node_modules", "__pycache__"}
@@ -103,6 +105,28 @@ class LocalGitStore:
 
     def abspath(self, rel_path: str) -> Path:
         return self._resolve(rel_path)
+
+    def write_asset(self, doc_rel_path: str, filename: str, data: bytes) -> str:
+        """Save an uploaded image next to `doc_rel_path`, in a `media/`
+        subdirectory (the convention already used throughout the corpus —
+        see preprocessor.rst, methods_of_pradis.rst). Returns the URI to use
+        in a `.. figure::`/`.. image::` directive, relative to the doc.
+        Collisions get a numeric suffix rather than overwriting."""
+        safe_name = re.sub(r"[^\w.\-]+", "_", filename).lstrip(".") or "image"
+        doc_dir = self._resolve(doc_rel_path).parent
+        media_dir = doc_dir / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+
+        stem, dot, ext = safe_name.rpartition(".")
+        stem, ext = (stem, "." + ext) if dot else (safe_name, "")
+        candidate = media_dir / safe_name
+        n = 1
+        while candidate.exists():
+            candidate = media_dir / f"{stem}_{n}{ext}"
+            n += 1
+
+        candidate.write_bytes(data)
+        return f"media/{candidate.name}"
 
     def resolve_asset(self, doc_rel_path: str, uri: str) -> Path | None:
         """Mirror Sphinx: a leading '/' is rooted at the source dir, else

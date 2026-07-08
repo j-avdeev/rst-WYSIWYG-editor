@@ -2,6 +2,7 @@ import { Schema } from 'prosemirror-model'
 import type { NodeSpec, MarkSpec } from 'prosemirror-model'
 import OrderedMap from 'orderedmap'
 import { addListNodes } from 'prosemirror-schema-list'
+import { tableNodes } from 'prosemirror-tables'
 
 // Phase 1 whitelist v1: sections/paragraphs/lists + inline basics, plus the
 // opaque-block/opaque-mark escape hatch for everything else. Editing (Phase
@@ -143,7 +144,46 @@ for (const name of ['bullet_list', 'ordered_list'] as const) {
   })
 }
 
+const csvCellAttr = {
+  default: null,
+  getFromDOM: () => null,
+  setDOMAttr: () => {},
+}
+
+let nodesWithTables = nodesWithLists.append(
+  OrderedMap.from(
+    tableNodes({
+      tableGroup: 'block',
+      cellContent: 'paragraph+',
+      cellAttributes: {
+        csvRaw: csvCellAttr,
+        csvPrefix: csvCellAttr,
+        csvQuoted: csvCellAttr,
+        csvInitialContent: csvCellAttr,
+      },
+    }),
+  ),
+)
+
+const tableSpec = nodesWithTables.get('table')!
+nodesWithTables = nodesWithTables.update('table', {
+  ...tableSpec,
+  attrs: { ...(tableSpec.attrs ?? {}), srcId, csv: { default: null } },
+  toDOM: (node) => {
+    const csv = node.attrs.csv as { caption?: string } | null
+    const attrs = { class: csv ? 'rst-csv-table' : '' }
+    if (csv?.caption) return ['table', attrs, ['caption', csv.caption], ['tbody', 0]]
+    return ['table', attrs, ['tbody', 0]]
+  },
+})
+
+const rowSpec = nodesWithTables.get('table_row')!
+nodesWithTables = nodesWithTables.update('table_row', {
+  ...rowSpec,
+  attrs: { ...(rowSpec.attrs ?? {}), csvRaw: { default: null }, csvCellCount: { default: null } },
+})
+
 export const schema = new Schema({
-  nodes: nodesWithLists,
+  nodes: nodesWithTables,
   marks,
 })
