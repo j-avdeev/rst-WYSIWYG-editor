@@ -10,7 +10,7 @@ $env:RSTKIT_ROOT = $Root
 Write-Host "RSTKIT_ROOT = $Root"
 
 $backend = Start-Process -FilePath "uv" `
-    -ArgumentList "run", "uvicorn", "app.main:app", "--reload", "--port", "8000" `
+    -ArgumentList "run", "uvicorn", "app.main:app", "--reload", "--port", "8010" `
     -WorkingDirectory (Join-Path $repoRoot "backend") `
     -PassThru -NoNewWindow
 
@@ -21,11 +21,11 @@ if (Test-Path (Join-Path $frontendDir "package.json")) {
         -WorkingDirectory $frontendDir `
         -PassThru -NoNewWindow
 } else {
-    Write-Host "frontend/ not scaffolded yet — backend only (http://localhost:8000)"
+    Write-Host "frontend/ not scaffolded yet — backend only (http://localhost:8010)"
     $frontend = $null
 }
 
-Write-Host "Backend:  http://localhost:8000/api/health"
+Write-Host "Backend:  http://localhost:8010/api/health"
 if ($frontend) { Write-Host "Frontend: http://localhost:5173" }
 Write-Host "Ctrl+C to stop."
 

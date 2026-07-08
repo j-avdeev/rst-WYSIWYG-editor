@@ -6,29 +6,48 @@ ProseMirror frontend. Core guarantee: **files round-trip byte-identical** —
 only blocks you actually edit are re-serialized, so git diffs stay minimal.
 
 Development plan: see `.claude/plans/` (approved 2026-07). Current status:
-**Phase 0 complete** — round-trip engine + corpus harness.
+**Phase 1 complete** — read-only browser (file tree, doc viewer with best-effort
+rich rendering, asset/substitution resolution) on top of the Phase 0 round-trip
+engine.
 
 ## Layout
 
 - `backend/src/rstkit/` — rst round-trip engine (no web dependencies)
   - `parse.py` — span-partition scanner + docutils parse-health
   - `serialize.py` — identity/dirty-node serializer
+  - `inline.py` — best-effort rendering enrichment (isolate-parses each
+    block's own raw_source into a paragraph/list/inline-mark tree; never
+    affects round-trip fidelity)
+  - `subst.py` — per-file `|name|` substitution index
+  - `store.py` — `DocumentStore` protocol + `LocalGitStore`
   - `cli.py` — `rstkit roundtrip` corpus harness (the permanent quality gate)
-- `backend/src/app/` — FastAPI app (Phase 1+)
-- `frontend/` — Vite + React + ProseMirror (Phase 1+)
+- `backend/src/app/` — FastAPI app: `/api/project`, `/api/files`,
+  `/api/doc/{path}`, `/api/asset`
+- `frontend/` — Vite + React + TypeScript + ProseMirror (read-only in Phase 1;
+  the same schema carries into Phase 2's editing core)
 
 ## Quality gate
 
 ```powershell
 cd backend
-uv run pytest                                        # unit + fixture corpus
+uv run pytest                                        # unit + fixture corpus + API tests
 uv run rstkit roundtrip C:\work\pradis-docs-git\docs # full corpus, must PASS
 ```
 
-Pass criterion: 100% byte-identical over all 2,093 corpus files.
+Pass criterion: 100% byte-identical over all 2,093 corpus files. Re-run after
+every change that touches `rstkit/`.
+
+## Running it
+
+```powershell
+powershell -File scripts\dev.ps1
+```
+
+Backend on :8010, frontend (Vite) on :5173 proxying `/api` to the backend.
+Override the docs root with `-Root <sphinx-source-dir>`.
 
 ## Requirements
 
 - Python ≥3.11 via [uv](https://docs.astral.sh/uv/) (docutils pinned to 0.21.2
   to match the PRADIS Sphinx 8.2.3 build environment)
-- Node 20+ / pnpm (from Phase 1)
+- Node 20+ / pnpm

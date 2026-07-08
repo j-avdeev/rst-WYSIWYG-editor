@@ -1,0 +1,38 @@
+.file-tree {
+  font-size: 13px;
+  user-select: none;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.file-tree__row {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  padding-right: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.file-tree__row:hover {
+  background: #eef2ff;
+}
+
+.file-tree__row--selected {
+  background: #dbeafe;
+  font-weight: 600;
+}
+
+.file-tree__row--dir {
+  color: #3f3f46;
+}
+
+.file-tree__caret {
+  display: inline-block;
+  width: 12px;
+  transition: transform 0.1s;
+}
+
+.file-tree__caret--open {
+  transform: rotate(90deg);
+}

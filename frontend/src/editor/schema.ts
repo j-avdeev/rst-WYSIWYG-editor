@@ -1,0 +1,120 @@
+import { Schema } from 'prosemirror-model'
+import type { NodeSpec, MarkSpec } from 'prosemirror-model'
+import OrderedMap from 'orderedmap'
+import { addListNodes } from 'prosemirror-schema-list'
+
+// Phase 1 whitelist v1: sections/paragraphs/lists + inline basics, plus the
+// opaque-block/opaque-mark escape hatch for everything else. Editing (Phase
+// 2+) reuses this same schema — Phase 1 just runs the EditorView read-only.
+
+const baseNodes: Record<string, NodeSpec> = {
+  doc: { content: 'block+' },
+
+  paragraph: {
+    content: 'inline*',
+    group: 'block',
+    parseDOM: [{ tag: 'p' }],
+    toDOM: () => ['p', 0],
+  },
+
+  heading: {
+    content: 'inline*',
+    group: 'block',
+    attrs: { level: { default: 1 }, underline: { default: '=' }, overline: { default: false } },
+    parseDOM: [1, 2, 3, 4, 5, 6].map((level) => ({ tag: `h${level}`, attrs: { level } })),
+    toDOM: (node) => [`h${Math.min(node.attrs.level, 6)}`, { 'data-underline': node.attrs.underline }, 0],
+  },
+
+  blockquote: {
+    content: 'block+',
+    group: 'block',
+    parseDOM: [{ tag: 'blockquote' }],
+    toDOM: () => ['blockquote', 0],
+  },
+
+  literal_block: {
+    content: 'text*',
+    group: 'block',
+    code: true,
+    whitespace: 'pre',
+    marks: '',
+    parseDOM: [{ tag: 'pre' }],
+    toDOM: () => ['pre', ['code', 0]],
+  },
+
+  // A whole unwhitelisted rst construct (directive, comment, transition, or
+  // any "text" block the isolated-parse enrichment couldn't map). Shows the
+  // exact raw_source; never editable inline, matching the plan's "source
+  // card" design. attrs.directiveName is shown as a badge in the NodeView.
+  opaque_block: {
+    group: 'block',
+    atom: true,
+    isolating: true,
+    attrs: { raw: { default: '' }, kind: { default: '' }, label: { default: '' } },
+    parseDOM: [{ tag: 'div.opaque-block' }],
+    toDOM: (node) => [
+      'div',
+      { class: 'opaque-block' },
+      ['div', { class: 'opaque-block__label' }, node.attrs.label || node.attrs.kind],
+      ['pre', node.attrs.raw],
+    ],
+  },
+
+  // Inline atoms
+  inline_math: {
+    group: 'inline',
+    inline: true,
+    atom: true,
+    attrs: { tex: { default: '' } },
+    toDOM: (node) => ['span', { class: 'inline-math', title: node.attrs.tex }, `:math:\`${node.attrs.tex}\``],
+  },
+
+  subst_ref: {
+    group: 'inline',
+    inline: true,
+    atom: true,
+    attrs: { name: { default: '' }, kind: { default: '' }, src: { default: '' }, text: { default: '' } },
+    toDOM: (node) => {
+      if (node.attrs.kind === 'image' && node.attrs.src) {
+        return ['img', { class: 'subst-ref subst-ref--image', src: node.attrs.src, alt: node.attrs.name, title: `|${node.attrs.name}|` }]
+      }
+      return ['span', { class: 'subst-ref subst-ref--chip', title: `|${node.attrs.name}|` }, node.attrs.text || `|${node.attrs.name}|`]
+    },
+  },
+
+  text: { group: 'inline' },
+}
+
+const marks: Record<string, MarkSpec> = {
+  strong: {
+    parseDOM: [{ tag: 'strong' }],
+    toDOM: () => ['strong', 0],
+  },
+  em: {
+    parseDOM: [{ tag: 'em' }],
+    toDOM: () => ['em', 0],
+  },
+  code: {
+    parseDOM: [{ tag: 'code' }],
+    toDOM: () => ['code', 0],
+  },
+  link: {
+    attrs: { href: { default: '' } },
+    parseDOM: [{ tag: 'a[href]' }],
+    toDOM: (mark) => ['a', { href: mark.attrs.href, target: '_blank', rel: 'noreferrer' }, 0],
+  },
+  sup: { parseDOM: [{ tag: 'sup' }], toDOM: () => ['sup', 0] },
+  sub: { parseDOM: [{ tag: 'sub' }], toDOM: () => ['sub', 0] },
+  title_ref: { parseDOM: [{ tag: 'cite' }], toDOM: () => ['cite', 0] },
+  opaque: {
+    // unrecognized inline role/markup, kept as plain (but visually marked) text
+    toDOM: () => ['span', { class: 'inline-opaque' }, 0],
+  },
+}
+
+const nodesWithLists = addListNodes(OrderedMap.from(baseNodes), 'paragraph block*', 'block')
+
+export const schema = new Schema({
+  nodes: nodesWithLists,
+  marks,
+})
