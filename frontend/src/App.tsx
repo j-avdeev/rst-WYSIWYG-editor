@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileEntry, GetDocResponse, ProjectInfo } from './api/types'
-import { fetchPreview, getDoc, getFileTree, getProject, saveDoc, HttpError } from './api/client'
+import {
+  createPage,
+  fetchPreview,
+  getDoc,
+  getFileTree,
+  getProject,
+  renamePage,
+  saveDoc,
+  HttpError,
+} from './api/client'
 import { FileTree } from './panels/FileTree'
 import { RightPanel } from './panels/RightPanel'
 import type { PreviewData } from './panels/RightPanel'
@@ -43,6 +52,12 @@ export default function App() {
   const [saving, setSaving] = useState(false)
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [gitRefreshKey, setGitRefreshKey] = useState(0)
+  const [fileDialog, setFileDialog] = useState<
+    | { kind: 'create'; path: string; title: string; toctree: string; error: string | null }
+    | { kind: 'rename'; path: string; newPath: string; error: string | null }
+    | null
+  >(null)
 
   const editorApiRef = useRef<EditorApi | null>(null)
   const previewTimer = useRef<number | undefined>(undefined)
@@ -116,6 +131,7 @@ export default function App() {
       setDoc(fresh)
       setDirtyCount(0)
       setBanner({ kind: 'saved' })
+      setGitRefreshKey((k) => k + 1)
       refreshPreviewSoon(0)
       window.setTimeout(() => setBanner((b) => (b?.kind === 'saved' ? null : b)), 2500)
     } catch (e) {
@@ -137,10 +153,76 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [handleSave])
 
+  const refreshTree = useCallback(() => {
+    getFileTree().then(setTree).catch((e) => setError(String(e)))
+  }, [])
+
+  const handleWorkingTreeChanged = useCallback(
+    (path: string) => {
+      refreshTree()
+      if (selectedRef.current === path) {
+        loadDoc(path) // discarded/restored file that is open: reload or clear
+      }
+    },
+    [refreshTree, loadDoc],
+  )
+
+  const openCreateDialog = () => {
+    const dir = selected ? selected.split('/').slice(0, -1).join('/') : ''
+    setFileDialog({
+      kind: 'create',
+      path: dir ? `${dir}/new-page.rst` : 'new-page.rst',
+      title: '',
+      toctree: dir ? `${dir}/index_ru.rst` : 'index.rst',
+      error: null,
+    })
+  }
+
+  const openRenameDialog = () => {
+    if (!selected) return
+    setFileDialog({ kind: 'rename', path: selected, newPath: selected, error: null })
+  }
+
+  const submitFileDialog = async () => {
+    if (!fileDialog) return
+    try {
+      if (fileDialog.kind === 'create') {
+        const result = await createPage(
+          fileDialog.path,
+          fileDialog.title,
+          fileDialog.toctree.trim() || null,
+        )
+        setFileDialog(null)
+        refreshTree()
+        setGitRefreshKey((k) => k + 1)
+        setSelected(result.path)
+      } else {
+        const result = await renamePage(fileDialog.path, fileDialog.newPath)
+        setFileDialog(null)
+        refreshTree()
+        setGitRefreshKey((k) => k + 1)
+        setSelected(result.path)
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setFileDialog((d) => (d ? { ...d, error: message } : d))
+    }
+  }
+
   return (
     <div className="app">
       <aside className="app__sidebar">
-        <div className="app__project">{project?.name ?? '…'}</div>
+        <div className="app__project">
+          <span>{project?.name ?? '…'}</span>
+          <span className="app__tree-actions">
+            <button type="button" title="New page" onClick={openCreateDialog}>
+              ＋
+            </button>
+            <button type="button" title="Rename selected file" disabled={!selected} onClick={openRenameDialog}>
+              ✎
+            </button>
+          </span>
+        </div>
         {tree ? (
           <FileTree root={tree} selected={selected} onSelect={setSelected} />
         ) : (
@@ -195,11 +277,82 @@ export default function App() {
                   onDocChanged={handleDocChanged}
                 />
               </div>
-              <RightPanel data={preview} loading={previewLoading} />
+              <RightPanel
+                data={preview}
+                loading={previewLoading}
+                gitRefreshKey={gitRefreshKey}
+                onWorkingTreeChanged={handleWorkingTreeChanged}
+              />
             </div>
           </>
         )}
       </main>
+
+      {fileDialog && (
+        <div className="file-dialog__backdrop" onClick={() => setFileDialog(null)}>
+          <div className="file-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="file-dialog__title">
+              {fileDialog.kind === 'create' ? 'New page' : 'Rename page'}
+            </div>
+            {fileDialog.kind === 'create' ? (
+              <>
+                <label>
+                  Path (.rst, relative to project root)
+                  <input
+                    value={fileDialog.path}
+                    onChange={(e) => setFileDialog({ ...fileDialog, path: e.target.value })}
+                    spellCheck={false}
+                  />
+                </label>
+                <label>
+                  Page title
+                  <input
+                    value={fileDialog.title}
+                    onChange={(e) => setFileDialog({ ...fileDialog, title: e.target.value })}
+                    placeholder="Заголовок страницы"
+                  />
+                </label>
+                <label>
+                  Add to toctree of (optional, blank to skip)
+                  <input
+                    value={fileDialog.toctree}
+                    onChange={(e) => setFileDialog({ ...fileDialog, toctree: e.target.value })}
+                    spellCheck={false}
+                  />
+                </label>
+              </>
+            ) : (
+              <label>
+                New path
+                <input
+                  value={fileDialog.newPath}
+                  onChange={(e) => setFileDialog({ ...fileDialog, newPath: e.target.value })}
+                  spellCheck={false}
+                />
+              </label>
+            )}
+            {fileDialog.kind === 'rename' && (
+              <div className="file-dialog__hint">
+                Renames via git mv and updates toctree entries that point at this page.
+              </div>
+            )}
+            {fileDialog.error && <div className="file-dialog__error">{fileDialog.error}</div>}
+            <div className="file-dialog__actions">
+              <button type="button" onClick={() => setFileDialog(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={fileDialog.kind === 'create' && !fileDialog.title.trim()}
+                onClick={() => void submitFileDialog()}
+              >
+                {fileDialog.kind === 'create' ? 'Create' : 'Rename'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

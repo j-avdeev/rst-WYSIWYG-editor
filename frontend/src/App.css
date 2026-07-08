@@ -21,6 +21,119 @@
   font-size: 13px;
   border-bottom: 1px solid #e4e4e7;
   color: #3f3f46;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app__tree-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.app__tree-actions button {
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  border-radius: 4px;
+  width: 26px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #3f3f46;
+}
+
+.app__tree-actions button:disabled {
+  color: #d4d4d8;
+  cursor: default;
+}
+
+.app__tree-actions button:not(:disabled):hover {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+}
+
+.file-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.file-dialog {
+  background: #fff;
+  border-radius: 8px;
+  width: min(560px, 90vw);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+
+.file-dialog__title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.file-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #52525b;
+}
+
+.file-dialog input {
+  border: 1px solid #d4d4d8;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: Consolas, 'Cascadia Code', monospace;
+}
+
+.file-dialog__hint {
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.file-dialog__error {
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.file-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.file-dialog__actions button {
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  border-radius: 4px;
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.file-dialog__actions button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.file-dialog__actions button.primary:disabled {
+  background: #e4e4e7;
+  border-color: #e4e4e7;
+  color: #a1a1aa;
+  cursor: default;
 }
 
 .app__main {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { GitPanel } from './GitPanel'
 import './RightPanel.css'
 
 export interface PreviewData {
@@ -27,8 +28,18 @@ const PREVIEW_CSS = `
   .system-message { display: none; }
 `
 
-export function RightPanel({ data, loading }: { data: PreviewData | null; loading: boolean }) {
-  const [tab, setTab] = useState<'preview' | 'source'>('preview')
+export function RightPanel({
+  data,
+  loading,
+  gitRefreshKey,
+  onWorkingTreeChanged,
+}: {
+  data: PreviewData | null
+  loading: boolean
+  gitRefreshKey: number
+  onWorkingTreeChanged: (path: string) => void
+}) {
+  const [tab, setTab] = useState<'preview' | 'source' | 'git'>('preview')
 
   const srcdoc = useMemo(
     () => (data ? `<!doctype html><meta charset="utf-8"><style>${PREVIEW_CSS}</style>${data.html}` : ''),
@@ -52,11 +63,15 @@ export function RightPanel({ data, loading }: { data: PreviewData | null; loadin
         >
           Source
         </button>
+        <button type="button" className={tab === 'git' ? 'active' : ''} onClick={() => setTab('git')}>
+          Git
+        </button>
         {loading && <span className="right-panel__spinner">…</span>}
       </div>
-      {tab === 'preview' ? (
+      {tab === 'preview' && (
         <iframe className="right-panel__preview" sandbox="" srcDoc={srcdoc} title="preview" />
-      ) : (
+      )}
+      {tab === 'source' && (
         <div className="right-panel__source">
           {data?.blocks.map((b, i) => (
             <pre key={i} className={b.dirty ? 'src-block src-block--dirty' : 'src-block'}>
@@ -64,6 +79,9 @@ export function RightPanel({ data, loading }: { data: PreviewData | null; loadin
             </pre>
           ))}
         </div>
+      )}
+      {tab === 'git' && (
+        <GitPanel refreshKey={gitRefreshKey} onWorkingTreeChanged={onWorkingTreeChanged} />
       )}
     </div>
   )
