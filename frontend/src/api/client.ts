@@ -138,6 +138,19 @@ export async function createPage(
   return jsonOrError(res)
 }
 
+export async function importDocument(
+  path: string,
+  file: File,
+  toctreeIndex: string | null,
+): Promise<{ path: string; toctree_updated: boolean; parse_errors: number }> {
+  const form = new FormData()
+  form.append('path', path)
+  if (toctreeIndex) form.append('toctree_index', toctreeIndex)
+  form.append('file', file)
+  const res = await fetch('/api/import', { method: 'POST', body: form })
+  return jsonOrError(res)
+}
+
 export async function renamePage(
   path: string,
   newPath: string,

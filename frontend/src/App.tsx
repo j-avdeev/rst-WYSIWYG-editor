@@ -6,6 +6,7 @@ import {
   getDoc,
   getFileTree,
   getProject,
+  importDocument,
   renamePage,
   saveDoc,
   HttpError,
@@ -56,6 +57,7 @@ export default function App() {
   const [fileDialog, setFileDialog] = useState<
     | { kind: 'create'; path: string; title: string; toctree: string; error: string | null }
     | { kind: 'rename'; path: string; newPath: string; error: string | null }
+    | { kind: 'import'; path: string; toctree: string; file: File | null; error: string | null }
     | null
   >(null)
 
@@ -183,26 +185,44 @@ export default function App() {
     setFileDialog({ kind: 'rename', path: selected, newPath: selected, error: null })
   }
 
+  const openImportDialog = () => {
+    const dir = selected ? selected.split('/').slice(0, -1).join('/') : ''
+    setFileDialog({
+      kind: 'import',
+      path: dir ? `${dir}/imported.rst` : 'imported.rst',
+      toctree: dir ? `${dir}/index_ru.rst` : 'index.rst',
+      file: null,
+      error: null,
+    })
+  }
+
   const submitFileDialog = async () => {
     if (!fileDialog) return
     try {
+      let newPath: string
       if (fileDialog.kind === 'create') {
         const result = await createPage(
           fileDialog.path,
           fileDialog.title,
           fileDialog.toctree.trim() || null,
         )
-        setFileDialog(null)
-        refreshTree()
-        setGitRefreshKey((k) => k + 1)
-        setSelected(result.path)
+        newPath = result.path
+      } else if (fileDialog.kind === 'import') {
+        if (!fileDialog.file) return
+        const result = await importDocument(
+          fileDialog.path,
+          fileDialog.file,
+          fileDialog.toctree.trim() || null,
+        )
+        newPath = result.path
       } else {
         const result = await renamePage(fileDialog.path, fileDialog.newPath)
-        setFileDialog(null)
-        refreshTree()
-        setGitRefreshKey((k) => k + 1)
-        setSelected(result.path)
+        newPath = result.path
       }
+      setFileDialog(null)
+      refreshTree()
+      setGitRefreshKey((k) => k + 1)
+      setSelected(newPath)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setFileDialog((d) => (d ? { ...d, error: message } : d))
@@ -217,6 +237,9 @@ export default function App() {
           <span className="app__tree-actions">
             <button type="button" title="New page" onClick={openCreateDialog}>
               ＋
+            </button>
+            <button type="button" title="Import .docx / .md" onClick={openImportDialog}>
+              ⇪
             </button>
             <button type="button" title="Rename selected file" disabled={!selected} onClick={openRenameDialog}>
               ✎
@@ -292,9 +315,45 @@ export default function App() {
         <div className="file-dialog__backdrop" onClick={() => setFileDialog(null)}>
           <div className="file-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="file-dialog__title">
-              {fileDialog.kind === 'create' ? 'New page' : 'Rename page'}
+              {fileDialog.kind === 'create' && 'New page'}
+              {fileDialog.kind === 'import' && 'Import .docx / .md'}
+              {fileDialog.kind === 'rename' && 'Rename page'}
             </div>
-            {fileDialog.kind === 'create' ? (
+            {fileDialog.kind === 'import' && (
+              <>
+                <label>
+                  Document (.docx or .md — legacy .doc must be saved as .docx first)
+                  <input
+                    type="file"
+                    accept=".docx,.md,.markdown"
+                    onChange={(e) =>
+                      setFileDialog({ ...fileDialog, file: e.target.files?.[0] ?? null })
+                    }
+                  />
+                </label>
+                <label>
+                  Save as (.rst, relative to project root)
+                  <input
+                    value={fileDialog.path}
+                    onChange={(e) => setFileDialog({ ...fileDialog, path: e.target.value })}
+                    spellCheck={false}
+                  />
+                </label>
+                <label>
+                  Add to toctree of (optional, blank to skip)
+                  <input
+                    value={fileDialog.toctree}
+                    onChange={(e) => setFileDialog({ ...fileDialog, toctree: e.target.value })}
+                    spellCheck={false}
+                  />
+                </label>
+                <div className="file-dialog__hint">
+                  Embedded images are extracted into the page's media/ folder. The conversion
+                  is a starting point — review the result in the editor before committing.
+                </div>
+              </>
+            )}
+            {fileDialog.kind === 'create' && (
               <>
                 <label>
                   Path (.rst, relative to project root)
@@ -321,7 +380,8 @@ export default function App() {
                   />
                 </label>
               </>
-            ) : (
+            )}
+            {fileDialog.kind === 'rename' && (
               <label>
                 New path
                 <input
@@ -344,10 +404,15 @@ export default function App() {
               <button
                 type="button"
                 className="primary"
-                disabled={fileDialog.kind === 'create' && !fileDialog.title.trim()}
+                disabled={
+                  (fileDialog.kind === 'create' && !fileDialog.title.trim()) ||
+                  (fileDialog.kind === 'import' && !fileDialog.file)
+                }
                 onClick={() => void submitFileDialog()}
               >
-                {fileDialog.kind === 'create' ? 'Create' : 'Rename'}
+                {fileDialog.kind === 'create' && 'Create'}
+                {fileDialog.kind === 'import' && 'Import'}
+                {fileDialog.kind === 'rename' && 'Rename'}
               </button>
             </div>
           </div>

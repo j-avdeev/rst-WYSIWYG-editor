@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from rstkit.gitio import GitError, GitRepo
+from rstkit.importer import ImportError_, import_to_rst
 from rstkit.pages import PageError, add_toctree_entry, new_page_bytes, update_toctree_references
 from rstkit.store import LocalGitStore, PathOutsideRootError
 
@@ -11,6 +12,8 @@ from ..deps import get_store
 from .git import get_repo
 
 router = APIRouter()
+
+_MAX_IMPORT_BYTES = 50 * 1024 * 1024
 
 
 def _validate_rst_path(rel_path: str) -> str:
@@ -62,6 +65,57 @@ def create_page(req: CreatePageRequest, store: LocalGitStore = Depends(get_store
         store.write_bytes(_validate_rst_path(req.toctree_index), toctree_new_bytes)
 
     return {"path": rel, "toctree_updated": bool(toctree_new_bytes)}
+
+
+@router.post("/api/import")
+async def import_document(
+    path: str = Form(...),
+    toctree_index: str | None = Form(None),
+    file: UploadFile = File(...),
+    store: LocalGitStore = Depends(get_store),
+) -> dict:
+    rel = _validate_rst_path(path)
+    try:
+        target = store.abspath(rel)
+    except PathOutsideRootError:
+        raise HTTPException(status_code=400, detail="path escapes project root")
+    if target.exists():
+        raise HTTPException(status_code=409, detail="file already exists")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="empty upload")
+    if len(data) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="document too large (max 50MB)")
+
+    # media extraction needs the target dir to exist before write_asset runs
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        rst_text, parse_errors = import_to_rst(data, file.filename or "", store, rel)
+    except ImportError_ as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    toctree_new_bytes: bytes | None = None
+    if toctree_index:
+        index_rel = _validate_rst_path(toctree_index)
+        try:
+            index_bytes = store.read_bytes(index_rel)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail=f"toctree index not found: {index_rel}")
+        try:
+            toctree_new_bytes = add_toctree_entry(index_bytes, index_rel, rel)
+        except PageError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    store.write_bytes(rel, rst_text.encode("utf-8"))
+    if toctree_new_bytes is not None and toctree_index:
+        store.write_bytes(_validate_rst_path(toctree_index), toctree_new_bytes)
+
+    return {
+        "path": rel,
+        "toctree_updated": bool(toctree_new_bytes),
+        "parse_errors": parse_errors,
+    }
 
 
 class RenameRequest(BaseModel):
