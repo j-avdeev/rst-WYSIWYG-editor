@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileEntry, GetDocResponse, ProjectInfo } from './api/types'
 import {
+  buildStatus,
+  builtUrlFor,
   createPage,
   fetchPreview,
   getDoc,
@@ -9,6 +11,7 @@ import {
   importDocument,
   renamePage,
   saveDoc,
+  startBuild,
   HttpError,
 } from './api/client'
 import { FileTree } from './panels/FileTree'
@@ -54,6 +57,8 @@ export default function App() {
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [gitRefreshKey, setGitRefreshKey] = useState(0)
+  const [building, setBuilding] = useState(false)
+  const [buildError, setBuildError] = useState<string | null>(null)
   const [fileDialog, setFileDialog] = useState<
     | { kind: 'create'; path: string; title: string; toctree: string; error: string | null }
     | { kind: 'rename'; path: string; newPath: string; error: string | null }
@@ -158,6 +163,51 @@ export default function App() {
   const refreshTree = useCallback(() => {
     getFileTree().then(setTree).catch((e) => setError(String(e)))
   }, [])
+
+  const handleBuildAndView = useCallback(async () => {
+    const path = selectedRef.current
+    if (!path || building) return
+    setBuilding(true)
+    setBuildError(null)
+    // open the tab NOW, inside the user gesture, so popup blockers allow it;
+    // navigate it to the built page when the build finishes
+    const tab = window.open('', '_blank')
+    if (tab) {
+      tab.document.write(
+        '<title>Sphinx build…</title><body style="font-family:sans-serif;color:#555">' +
+          '<h3>⚡ Building documentation…</h3><p>This tab opens the built page when done. ' +
+          'First build of a large project can take a few minutes.</p>',
+      )
+    }
+    try {
+      const api = editorApiRef.current
+      const currentDoc = docRef.current
+      if (api && currentDoc && api.dirtyCount() > 0) {
+        await handleSave()
+      }
+      await startBuild()
+      // poll until done (up to 15 min for a cold full-corpus build)
+      const deadline = Date.now() + 15 * 60_000
+      let status = await buildStatus()
+      while (status.state === 'running' && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1500))
+        status = await buildStatus()
+      }
+      if (status.state === 'succeeded') {
+        const url = builtUrlFor(path)
+        if (tab) tab.location.href = url
+        else window.open(url, '_blank')
+      } else {
+        tab?.close()
+        setBuildError(status.log_tail.slice(-8).join('\n') || `build ${status.state}`)
+      }
+    } catch (e) {
+      tab?.close()
+      setBuildError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBuilding(false)
+    }
+  }, [building, handleSave])
 
   const handleWorkingTreeChanged = useCallback(
     (path: string) => {
@@ -273,6 +323,15 @@ export default function App() {
               >
                 {saving ? 'Saving…' : 'Save (Ctrl+S)'}
               </button>
+              <button
+                type="button"
+                className="app__build"
+                disabled={building}
+                title="Run a real sphinx-build and open this page's final HTML in a new tab"
+                onClick={() => void handleBuildAndView()}
+              >
+                {building ? 'Building…' : '⚡ Build & view'}
+              </button>
             </div>
             {banner?.kind === 'conflict' && (
               <div className="app__banner app__banner--conflict">
@@ -287,6 +346,17 @@ export default function App() {
             )}
             {banner?.kind === 'saved' && (
               <div className="app__banner app__banner--saved">Saved.</div>
+            )}
+            {buildError && (
+              <div className="app__banner app__banner--error">
+                <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'Consolas, monospace', fontSize: 12 }}>
+                  Build failed:{'\n'}
+                  {buildError}
+                </span>
+                <button type="button" onClick={() => setBuildError(null)}>
+                  Dismiss
+                </button>
+              </div>
             )}
             <div className="app__editor-row">
               <div className="app__editor-col">

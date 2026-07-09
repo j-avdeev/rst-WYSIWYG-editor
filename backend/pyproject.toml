@@ -10,6 +10,9 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
     "pypandoc-binary>=1.17",
+    "sphinx==8.2.3",
+    "sphinx-rtd-theme>=3.1.0",
+    "sphinxcontrib-jquery>=4.1",
 ]
 
 [project.scripts]

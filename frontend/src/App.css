@@ -211,6 +211,27 @@
   cursor: default;
 }
 
+.app__build {
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  color: #3f3f46;
+  border-radius: 4px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.app__build:hover:not(:disabled) {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.app__build:disabled {
+  color: #a1a1aa;
+  cursor: default;
+}
+
 .app__banner {
   padding: 8px 32px;
   font-size: 13px;

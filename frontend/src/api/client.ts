@@ -123,6 +123,28 @@ export async function gitDiscard(path: string): Promise<void> {
   await jsonOrError(res)
 }
 
+// --- sphinx build ------------------------------------------------------------
+
+export interface BuildStatus {
+  state: 'idle' | 'running' | 'succeeded' | 'failed'
+  elapsed_sec: number | null
+  warnings: number
+  log_tail: string[]
+}
+
+export async function startBuild(): Promise<BuildStatus> {
+  return jsonOrError(await fetch('/api/build', { method: 'POST' }))
+}
+
+export async function buildStatus(): Promise<BuildStatus> {
+  return jsonOrError(await fetch('/api/build/status'))
+}
+
+export function builtUrlFor(docPath: string): string {
+  const docname = docPath.replace(/\.rst$/i, '')
+  return `/built/${docname}.html`
+}
+
 // --- file management --------------------------------------------------------
 
 export async function createPage(
