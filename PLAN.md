@@ -19,7 +19,7 @@
 | 6 — Huge files | not started | | errors.rst = 463 KB, the size outlier |
 | 7 — Whitelist round-out | not started | | |
 | 8 — Import + niceties | ✅ done | `685fd56` | .docx/.md import via pypandoc-binary: embedded images re-homed through write_asset into media/, URIs rewritten, CRLF-normalized, optional toctree registration; imported files save round-trip-clean. Legacy .doc rejected with guidance. (Paste-screenshot upload landed earlier in `7e3ed3f`) |
-| 9 — Real Sphinx build preview | not started | | user request 2026-07-09: "view as it will be built finally", opened in a separate browser tab. See §Phase 9 below |
+| 9 — Real Sphinx build preview | ✅ done | `f1ffb83` | "⚡ Build & view" button: background sphinx-build (pinned 8.2.3, project's own conf.py/_ext), /built/ serving, opens final HTML in a new tab. Live full-corpus build: 1014s cold, 0 warnings |
 | 10 — TOC management & preview | not started | | user request 2026-07-09: intuitive table-of-contents view + management. Builds on Phase 5's byte-safe toctree editing. See §Phase 10 below |
 
 **Before touching anything in `backend/src/rstkit/`, run the two quality gates and keep them green:**
