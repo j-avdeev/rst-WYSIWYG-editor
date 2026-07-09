@@ -7,6 +7,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:8010',
+      // built sphinx output (pages + _static theme assets) — without this,
+      // /built/* falls through to the SPA fallback and the "new tab" shows
+      // the editor itself instead of the built page
+      '/built': 'http://localhost:8010',
     },
   },
 })
