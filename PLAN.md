@@ -20,7 +20,7 @@
 | 7 — Whitelist round-out | not started | | |
 | 8 — Import + niceties | ✅ done | `685fd56` | .docx/.md import via pypandoc-binary: embedded images re-homed through write_asset into media/, URIs rewritten, CRLF-normalized, optional toctree registration; imported files save round-trip-clean. Legacy .doc rejected with guidance. (Paste-screenshot upload landed earlier in `7e3ed3f`) |
 | 9 — Real Sphinx build preview | ✅ done | `f1ffb83` | "⚡ Build & view" button: background sphinx-build (pinned 8.2.3, project's own conf.py/_ext), /built/ serving, opens final HTML in a new tab. Live full-corpus build: 1014s cold, 0 warnings |
-| 10 — TOC management & preview | not started | | user request 2026-07-09: intuitive table-of-contents view + management. Builds on Phase 5's byte-safe toctree editing. See §Phase 10 below |
+| 10 — TOC management & preview | ✅ done | `a152810` | Files\|Contents sidebar toggle: nested nav with real titles, reorder/remove via byte-safe entry-line ops, orphan detection + one-click add. Preview renders toctrees as nav boxes with resolved titles. Live: 1,668 pages in nav, 425 orphans surfaced on PRADIS |
 
 **Before touching anything in `backend/src/rstkit/`, run the two quality gates and keep them green:**
 ```powershell
