@@ -18,7 +18,7 @@
 | 5 — Git UI + file management | ✅ done | `6cb197d` | Git tab (status/diff/commit/discard, per-file selection), New-page dialog with byte-safe toctree registration, rename via git mv with corpus-wide toctree reference updates. AC loop (create→toctree→edit→diff→commit) covered by test_full_phase5_loop |
 | 6 — Huge files | not started | | errors.rst = 463 KB, the size outlier |
 | 7 — Whitelist round-out | not started | | |
-| 8 — Import + niceties | not started | | image upload already covers the main paste-screenshot use case originally scoped here; pypandoc docx/md import still open |
+| 8 — Import + niceties | ✅ done | `685fd56` | .docx/.md import via pypandoc-binary: embedded images re-homed through write_asset into media/, URIs rewritten, CRLF-normalized, optional toctree registration; imported files save round-trip-clean. Legacy .doc rejected with guidance. (Paste-screenshot upload landed earlier in `7e3ed3f`) |
 | 9 — Real Sphinx build preview | not started | | user request 2026-07-09: "view as it will be built finally", opened in a separate browser tab. See §Phase 9 below |
 | 10 — TOC management & preview | not started | | user request 2026-07-09: intuitive table-of-contents view + management. Builds on Phase 5's byte-safe toctree editing. See §Phase 10 below |
 
