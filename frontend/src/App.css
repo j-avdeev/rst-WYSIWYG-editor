@@ -52,6 +52,29 @@
   border-color: #a5b4fc;
 }
 
+.app__sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.app__sidebar-tabs button {
+  border: none;
+  background: transparent;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  color: #52525b;
+}
+
+.app__sidebar-tabs button.active {
+  background: #e0e7ff;
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
 .file-dialog__backdrop {
   position: fixed;
   inset: 0;

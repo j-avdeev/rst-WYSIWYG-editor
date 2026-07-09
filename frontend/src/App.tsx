@@ -15,6 +15,7 @@ import {
   HttpError,
 } from './api/client'
 import { FileTree } from './panels/FileTree'
+import { TocView } from './panels/TocView'
 import { RightPanel } from './panels/RightPanel'
 import type { PreviewData } from './panels/RightPanel'
 import { Editor } from './editor/Editor'
@@ -57,6 +58,7 @@ export default function App() {
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [gitRefreshKey, setGitRefreshKey] = useState(0)
+  const [sidebarMode, setSidebarMode] = useState<'files' | 'toc'>('files')
   const [building, setBuilding] = useState(false)
   const [buildError, setBuildError] = useState<string | null>(null)
   const [fileDialog, setFileDialog] = useState<
@@ -296,10 +298,39 @@ export default function App() {
             </button>
           </span>
         </div>
-        {tree ? (
-          <FileTree root={tree} selected={selected} onSelect={setSelected} />
+        <div className="app__sidebar-tabs">
+          <button
+            type="button"
+            className={sidebarMode === 'files' ? 'active' : ''}
+            onClick={() => setSidebarMode('files')}
+          >
+            Files
+          </button>
+          <button
+            type="button"
+            className={sidebarMode === 'toc' ? 'active' : ''}
+            title="Document hierarchy as readers will see it (toctree navigation)"
+            onClick={() => setSidebarMode('toc')}
+          >
+            Contents
+          </button>
+        </div>
+        {sidebarMode === 'files' ? (
+          tree ? (
+            <FileTree root={tree} selected={selected} onSelect={setSelected} />
+          ) : (
+            <div className="app__loading">Loading file tree…</div>
+          )
         ) : (
-          <div className="app__loading">Loading file tree…</div>
+          <TocView
+            selected={selected}
+            onSelect={setSelected}
+            refreshKey={gitRefreshKey}
+            onChanged={() => {
+              refreshTree()
+              setGitRefreshKey((k) => k + 1)
+            }}
+          />
         )}
       </aside>
       <main className="app__main">

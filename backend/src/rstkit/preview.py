@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import quote
 
 
@@ -70,6 +71,69 @@ def _rewrite_asset_urls(html: str, doc_path: str) -> str:
     return _IMG_SRC.sub(repl, html)
 
 
+_preview_srcdir: Path | None = None
+_preview_docdir: Path | None = None
+
+
+def _register_preview_toctree() -> None:
+    """A toctree that RENDERS in the preview: a nav box listing each entry's
+    resolved title (explicit "Title <doc>" or the target's first heading),
+    instead of the default invisible stub."""
+    import html as html_mod
+    import re as re_mod
+
+    from docutils import nodes
+    from docutils.parsers import rst
+    from docutils.parsers.rst import directives
+
+    from .parse import _DummyOptionSpec
+
+    entry_title_re = re_mod.compile(r"^(.*?)\s*<([^<>]+)>\s*$")
+
+    class PreviewToctree(rst.Directive):
+        required_arguments = 0
+        optional_arguments = 100
+        final_argument_whitespace = True
+        has_content = True
+        option_spec = _DummyOptionSpec()
+
+        def run(self):  # noqa: D102
+            from .toc import _first_heading_title
+
+            items: list[str] = []
+            for line in self.content:
+                entry = line.strip()
+                if not entry or entry.startswith(":"):
+                    continue
+                m = entry_title_re.match(entry)
+                title, target = (m.group(1), m.group(2)) if m else (None, entry)
+                if not title and _preview_srcdir and _preview_docdir:
+                    if target.startswith("/"):
+                        docname = target.lstrip("/")
+                    else:
+                        rel = (_preview_docdir / target).resolve()
+                        try:
+                            docname = rel.relative_to(_preview_srcdir).as_posix()
+                        except ValueError:
+                            docname = target
+                    title = _first_heading_title(_preview_srcdir, docname)
+                items.append(
+                    f"<li>{html_mod.escape(title or target)} "
+                    f'<span class="toctree-box__target">{html_mod.escape(target)}</span></li>'
+                )
+            caption = next(
+                (v for k, v in (self.options or {}).items() if k == "caption"), None
+            )
+            head = f"<div class='toctree-box__caption'>{html_mod.escape(str(caption))}</div>" if caption else ""
+            body = (
+                f'<div class="toctree-box">{head}<div class="toctree-box__label">Contents (toctree)</div>'
+                f"<ul>{''.join(items)}</ul></div>"
+            )
+            return [nodes.raw("", body, format="html")]
+
+    directives.register_directive("toctree", PreviewToctree)
+
+
 def render_preview(text: str, doc_path: str, source_abspath: str | None = None) -> str:
     """rst text -> HTML body fragment. Never raises: rendering failure
     returns an error box instead."""
@@ -80,6 +144,14 @@ def render_preview(text: str, doc_path: str, source_abspath: str | None = None) 
     # make sure anything used by this text has at least a stub registered
     _register_stub_directives(text)
     _register_stub_roles(text)
+
+    global _preview_srcdir, _preview_docdir
+    if source_abspath:
+        _preview_docdir = Path(source_abspath).parent
+        depth = len([seg for seg in doc_path.replace("\\", "/").split("/") if seg]) - 1
+        _preview_srcdir = Path(source_abspath).parents[depth] if depth >= 0 else _preview_docdir
+    else:
+        _preview_srcdir = _preview_docdir = None
 
     settings = {
         "report_level": 5,
@@ -95,12 +167,18 @@ def render_preview(text: str, doc_path: str, source_abspath: str | None = None) 
     }
     try:
         with _native_registries():
-            parts = publish_parts(
-                source=text,
-                source_path=source_abspath,
-                writer_name="html5",
-                settings_overrides=settings,
-            )
+            _register_preview_toctree()
+            try:
+                parts = publish_parts(
+                    source=text,
+                    source_path=source_abspath,
+                    writer_name="html5",
+                    settings_overrides=settings,
+                )
+            finally:
+                # _native_registries restores the stubbed registry state on
+                # exit, which also removes this preview-only toctree
+                pass
         body = parts["body"]
     except Exception as exc:  # noqa: BLE001 — preview must never 500
         return (

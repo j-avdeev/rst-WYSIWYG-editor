@@ -145,6 +145,54 @@ export function builtUrlFor(docPath: string): string {
   return `/built/${docname}.html`
 }
 
+// --- table of contents --------------------------------------------------------
+
+export interface TocEntrySource {
+  file: string
+  toctree_index: number
+  position: number
+}
+
+export interface TocNode {
+  docname: string
+  path: string
+  title: string
+  missing?: boolean
+  source: TocEntrySource | null
+  children: TocNode[]
+}
+
+export interface TocResponse {
+  master: string
+  tree: TocNode
+  orphans: { docname: string; path: string; title: string }[]
+}
+
+export async function getToc(): Promise<TocResponse> {
+  return jsonOrError(await fetch('/api/toc'))
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrError(res)
+}
+
+export function tocReorder(file: string, toctreeIndex: number, fromPos: number, toPos: number): Promise<TocResponse> {
+  return postJson('/api/toc/reorder', { file, toctree_index: toctreeIndex, from_pos: fromPos, to_pos: toPos })
+}
+
+export function tocRemove(file: string, toctreeIndex: number, position: number): Promise<TocResponse> {
+  return postJson('/api/toc/remove', { file, toctree_index: toctreeIndex, position })
+}
+
+export function tocAddEntry(indexFile: string, docPath: string): Promise<TocResponse> {
+  return postJson('/api/toc/entry', { index_file: indexFile, doc_path: docPath })
+}
+
 // --- file management --------------------------------------------------------
 
 export async function createPage(

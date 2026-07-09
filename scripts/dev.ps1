@@ -9,8 +9,10 @@ $env:RSTKIT_ROOT = $Root
 
 Write-Host "RSTKIT_ROOT = $Root"
 
+# --reload-dir src: watching the whole CWD includes .venv, and package
+# installs mid-session can wedge the Windows reloader
 $backend = Start-Process -FilePath "uv" `
-    -ArgumentList "run", "uvicorn", "app.main:app", "--reload", "--port", "8010" `
+    -ArgumentList "run", "uvicorn", "app.main:app", "--reload", "--reload-dir", "src", "--port", "8010" `
     -WorkingDirectory (Join-Path $repoRoot "backend") `
     -PassThru -NoNewWindow
 

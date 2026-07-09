@@ -129,6 +129,61 @@ def add_toctree_entry(index_bytes: bytes, index_rel: str, new_doc_rel: str) -> b
     return _reassemble(doc.nodes).encode(doc.encoding)
 
 
+def _entry_line_indices(lines: list[str], file_rel: str) -> list[int]:
+    """Indices (into `lines`) of the toctree block's entry lines, in order —
+    the positions the TOC UI's reorder/remove operations refer to."""
+    toctree_dir = posixpath.dirname(_posix(file_rel))
+    return [
+        i
+        for i, line in enumerate(lines[1:], start=1)
+        if _entry_docname(line.rstrip("\r\n"), toctree_dir) is not None
+    ]
+
+
+def _rewrite_nth_toctree(
+    index_bytes: bytes, index_rel: str, toctree_index: int, mutate
+) -> bytes:
+    """Parse, apply `mutate(lines, entry_indices)` to the nth toctree block's
+    lines (keepends), reassemble everything else verbatim."""
+    doc = parse_rst(index_bytes, index_rel, check_health=False)
+    toctrees = _toctree_nodes(doc.nodes)
+    if toctree_index < 0 or toctree_index >= len(toctrees):
+        raise PageError(f"{index_rel} has no toctree #{toctree_index}")
+    node = toctrees[toctree_index]
+    lines = node.raw_source.splitlines(keepends=True)
+    mutate(lines, _entry_line_indices(lines, index_rel))
+    node.raw_source = "".join(lines)
+    return _reassemble(doc.nodes).encode(doc.encoding)
+
+
+def reorder_toctree_entry(
+    index_bytes: bytes, index_rel: str, toctree_index: int, from_pos: int, to_pos: int
+) -> bytes:
+    def mutate(lines: list[str], entries: list[int]) -> None:
+        if not (0 <= from_pos < len(entries)) or not (0 <= to_pos < len(entries)):
+            raise PageError("entry position out of range")
+        # permute only the entry lines; options, blanks, and any interleaved
+        # text keep their exact bytes and positions
+        entry_lines = [lines[i] for i in entries]
+        moved = entry_lines.pop(from_pos)
+        entry_lines.insert(to_pos, moved)
+        for slot, text in zip(entries, entry_lines, strict=True):
+            lines[slot] = text
+
+    return _rewrite_nth_toctree(index_bytes, index_rel, toctree_index, mutate)
+
+
+def remove_toctree_entry(
+    index_bytes: bytes, index_rel: str, toctree_index: int, position: int
+) -> bytes:
+    def mutate(lines: list[str], entries: list[int]) -> None:
+        if not (0 <= position < len(entries)):
+            raise PageError("entry position out of range")
+        del lines[entries[position]]
+
+    return _rewrite_nth_toctree(index_bytes, index_rel, toctree_index, mutate)
+
+
 def update_toctree_references(
     file_bytes: bytes, file_rel: str, old_doc_rel: str, new_doc_rel: str
 ) -> bytes | None:
