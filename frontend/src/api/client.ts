@@ -85,6 +85,29 @@ export async function uploadAsset(docPath: string, file: File): Promise<{ uri: s
   return jsonOrError(res)
 }
 
+export type ImageOp = 'rotate90' | 'flip_h' | 'flip_v' | 'crop'
+
+export interface CropRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export async function transformAsset(
+  docPath: string,
+  uri: string,
+  op: ImageOp,
+  crop?: CropRect,
+): Promise<{ uri: string }> {
+  const res = await fetch('/api/asset/transform', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ doc: docPath, uri, op, crop: crop ?? null }),
+  })
+  return jsonOrError(res)
+}
+
 // --- git ------------------------------------------------------------------
 
 export interface GitFileStatus {

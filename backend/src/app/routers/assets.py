@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
+from rstkit.images import ImageEditError, transform_asset
 from rstkit.store import LocalGitStore, PathOutsideRootError
 
 from ..deps import get_store
@@ -26,6 +28,37 @@ def get_asset(
     if path is None:
         raise HTTPException(status_code=404, detail="asset not found")
     return FileResponse(path)
+
+
+class CropRect(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class TransformRequest(BaseModel):
+    doc: str
+    uri: str
+    op: str            # rotate90 | flip_h | flip_v | crop
+    crop: CropRect | None = None
+
+
+@router.post("/api/asset/transform")
+def transform(req: TransformRequest, store: LocalGitStore = Depends(get_store)) -> dict:
+    try:
+        new_uri = transform_asset(
+            store,
+            req.doc,
+            req.uri,
+            req.op,
+            req.crop.model_dump() if req.crop else None,
+        )
+    except ImageEditError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    except PathOutsideRootError:
+        raise HTTPException(status_code=400, detail="path escapes project root")
+    return {"uri": new_uri}
 
 
 @router.post("/api/asset")

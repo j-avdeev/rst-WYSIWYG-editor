@@ -21,7 +21,8 @@ import {
   tableEditing,
 } from 'prosemirror-tables'
 import type { GetDocResponse } from '../api/types'
-import { assetUrl, uploadAsset } from '../api/client'
+import { assetUrl, transformAsset, uploadAsset } from '../api/client'
+import type { CropRect, ImageOp } from '../api/client'
 import { schema } from './schema'
 import { edDocToPMDoc } from './convert'
 import { DirtyTracker } from './dirty'
@@ -407,35 +408,174 @@ function isImageFile(file: File): boolean {
   return file.type.startsWith('image/')
 }
 
-function ImageReplaceControl({
+interface CropDraft {
+  startX: number
+  startY: number
+  endX: number
+  endY: number
+}
+
+function ImageToolsControl({
   docPath,
   raw,
   onReplace,
+  onNewUri,
+  onError,
 }: {
   docPath: string
   raw: string
   onReplace: (file: File) => void
+  onNewUri: (uri: string) => void
+  onError: (message: string) => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [cropMode, setCropMode] = useState(false)
+  const [cropDraft, setCropDraft] = useState<CropDraft | null>(null)
   const uri = imageUriFrom(raw)
 
+  const applyTransform = async (op: ImageOp, crop?: CropRect) => {
+    if (!uri || busy) return
+    setBusy(true)
+    try {
+      const result = await transformAsset(docPath, uri, op, crop)
+      onNewUri(result.uri)
+      setCropMode(false)
+      setCropDraft(null)
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cropRectOnScreen = (): { left: number; top: number; width: number; height: number } | null => {
+    if (!cropDraft) return null
+    return {
+      left: Math.min(cropDraft.startX, cropDraft.endX),
+      top: Math.min(cropDraft.startY, cropDraft.endY),
+      width: Math.abs(cropDraft.endX - cropDraft.startX),
+      height: Math.abs(cropDraft.endY - cropDraft.startY),
+    }
+  }
+
+  const applyCrop = () => {
+    const img = imgRef.current
+    const rect = cropRectOnScreen()
+    if (!img || !rect || rect.width < 3 || rect.height < 3) {
+      onError('Drag a rectangle on the image first.')
+      return
+    }
+    const scaleX = img.naturalWidth / img.clientWidth
+    const scaleY = img.naturalHeight / img.clientHeight
+    const crop: CropRect = {
+      x: Math.max(0, Math.round(rect.left * scaleX)),
+      y: Math.max(0, Math.round(rect.top * scaleY)),
+      width: Math.round(rect.width * scaleX),
+      height: Math.round(rect.height * scaleY),
+    }
+    crop.width = Math.min(crop.width, img.naturalWidth - crop.x)
+    crop.height = Math.min(crop.height, img.naturalHeight - crop.y)
+    void applyTransform('crop', crop)
+  }
+
+  const relPos = (e: React.MouseEvent) => {
+    const box = imgRef.current?.getBoundingClientRect()
+    if (!box) return { x: 0, y: 0 }
+    return {
+      x: Math.min(Math.max(e.clientX - box.left, 0), box.width),
+      y: Math.min(Math.max(e.clientY - box.top, 0), box.height),
+    }
+  }
+
+  const screenRect = cropRectOnScreen()
+
   return (
-    <div className="image-replace">
-      {uri ? (
-        <img className="image-replace__thumb" src={assetUrl(docPath, uri)} alt={uri} />
-      ) : (
-        <div className="image-replace__thumb image-replace__thumb--missing">no image path found</div>
-      )}
-      <button
-        type="button"
-        onClick={async () => {
-          const result = await pickImageForDoc(docPath)
-          if (result.status === 'picked') onReplace(result.file)
-          else if (result.status === 'unsupported') fileInputRef.current?.click()
-        }}
-      >
-        Replace image…
-      </button>
+    <div className={`image-replace${cropMode ? ' image-replace--cropping' : ''}`}>
+      <div className="image-replace__stage">
+        {uri ? (
+          <>
+            <img
+              ref={imgRef}
+              className="image-replace__thumb"
+              src={assetUrl(docPath, uri)}
+              alt={uri}
+              draggable={false}
+              onMouseDown={(e) => {
+                if (!cropMode) return
+                e.preventDefault()
+                const p = relPos(e)
+                setCropDraft({ startX: p.x, startY: p.y, endX: p.x, endY: p.y })
+              }}
+              onMouseMove={(e) => {
+                if (!cropMode || !cropDraft || e.buttons !== 1) return
+                const p = relPos(e)
+                setCropDraft({ ...cropDraft, endX: p.x, endY: p.y })
+              }}
+            />
+            {cropMode && screenRect && screenRect.width > 2 && (
+              <div
+                className="image-replace__crop-rect"
+                style={{
+                  left: screenRect.left,
+                  top: screenRect.top,
+                  width: screenRect.width,
+                  height: screenRect.height,
+                }}
+              />
+            )}
+          </>
+        ) : (
+          <div className="image-replace__thumb image-replace__thumb--missing">no image path found</div>
+        )}
+      </div>
+      <div className="image-replace__buttons">
+        {!cropMode ? (
+          <>
+            <button type="button" disabled={busy || !uri} title="Rotate 90° clockwise" onClick={() => void applyTransform('rotate90')}>
+              ⟳ 90°
+            </button>
+            <button type="button" disabled={busy || !uri} title="Flip horizontally" onClick={() => void applyTransform('flip_h')}>
+              ⇄ Flip
+            </button>
+            <button type="button" disabled={busy || !uri} title="Flip vertically" onClick={() => void applyTransform('flip_v')}>
+              ⇅ Flip
+            </button>
+            <button type="button" disabled={busy || !uri} title="Crop: drag a rectangle on the image, then Apply" onClick={() => setCropMode(true)}>
+              ✂ Crop
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                const result = await pickImageForDoc(docPath)
+                if (result.status === 'picked') onReplace(result.file)
+                else if (result.status === 'unsupported') fileInputRef.current?.click()
+              }}
+            >
+              Replace image…
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="image-replace__hint">Drag a rectangle on the image</span>
+            <button type="button" disabled={busy} className="primary" onClick={applyCrop}>
+              Apply crop
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setCropMode(false)
+                setCropDraft(null)
+              }}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
       <input
         ref={fileInputRef}
         type="file"
@@ -750,10 +890,12 @@ export function Editor({
             )}
             {(opaqueEdit.kind === 'figure' || opaqueEdit.kind === 'image') && (
               <div style={{ padding: '0 16px' }}>
-                <ImageReplaceControl
+                <ImageToolsControl
                   docPath={docPath}
                   raw={draft}
                   onReplace={(file) => void handleReplaceImage(file)}
+                  onNewUri={(uri) => setDraft((current) => replaceImageUri(current, uri))}
+                  onError={setUploadError}
                 />
               </div>
             )}
