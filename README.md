@@ -86,6 +86,9 @@ powershell -File start.ps1 -Root "C:\path\to\your\sphinx\source"
 
 ## Troubleshooting
 
+- **First launch fails with "cannot find the path specified"** — unpack the
+  editor into a short path like `C:\Tools\rst-editor` (deeply nested folders
+  hit Windows' 260-character path limit during the one-time package install)
 - **Port already in use** — start with another port: `start.ps1 -Root ... -Port 8020`
 - **"File changed on disk" banner** — someone (or another tool) modified the
   file while you were editing; reload the page from the banner
